@@ -1,0 +1,103 @@
+# ============================================================================
+# Environment
+# ============================================================================
+.env
+.env.local
+.env.*.local
+
+# ============================================================================
+# Python
+# ============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ============================================================================
+# IDEs and Editors
+# ============================================================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# ============================================================================
+# OS Files
+# ============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ============================================================================
+# Project Specific
+# ============================================================================
+# Research notes (keep private)
+research/interviews/notes/*
+!research/interviews/notes/.gitkeep
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Media uploads (local development)
+uploads/
+
+# ============================================================================
+# Secrets and Credentials
+# ============================================================================
+*.pem
+*.key
+credentials.json
+token.json
