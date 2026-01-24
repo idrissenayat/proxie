@@ -1,12 +1,11 @@
 """Provider model."""
 
-from sqlalchemy import Column, String, Boolean, Float, Integer, JSON, DateTime, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Boolean, Float, Integer, DateTime, Text
+from sqlalchemy.dialects.postgresql import UUID, JSON
 from sqlalchemy.sql import func
 import uuid
 
 from src.platform.database import Base
-
 
 class Provider(Base):
     """A skilled individual offering services."""

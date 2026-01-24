@@ -1,8 +1,7 @@
 from typing import List
 from uuid import UUID
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
-
+from sqlalchemy import or_, cast, String
 from src.platform.models.provider import Provider
 from src.platform.models.service import Service
 from src.platform.schemas.request import ServiceRequestCreate
@@ -28,17 +27,11 @@ class MatchingService:
             Service.name.ilike(f"%{request_data.service_type}%")
         )
         
-        # 2. Filter by City (assuming location stored in JSON has a 'city' field)
-        # Note: JSON querying details depend on DB, but for now we'll do a basic check
-        # This is a bit complex in pure SQLA with generic JSON, but specific to PG:
-        # Provider.location['city'].astext == request_data.location.city
-        
-        # For simplicity in MVP without complex JSON operators setup:
-        # We will fetch candidates and filter in python if the set is small, 
-        # OR use the JSON operator if feasible. Let's try to refine the query with JSON.
-        
-        # Assuming postgres:
-        query = query.filter(Provider.location['city'].astext == request_data.location.city)
+        # 2. Filter by City
+        # Use the ->> operator to extract text value from JSON
+        query = query.filter(
+            Provider.location.op("->>")("city") == request_data.location.city
+        )
         
         # Execute
         providers = query.all()
