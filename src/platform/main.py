@@ -45,8 +45,9 @@ async def health():
 
 
 # Import and include routers
-# from src.platform.routers import providers, requests, offers, bookings, reviews
-# app.include_router(providers.router, prefix="/providers", tags=["providers"])
+# Import and include routers
+from src.platform.routers import providers
+app.include_router(providers.router)
 # app.include_router(requests.router, prefix="/requests", tags=["requests"])
 # app.include_router(offers.router, prefix="/offers", tags=["offers"])
 # app.include_router(bookings.router, prefix="/bookings", tags=["bookings"])
