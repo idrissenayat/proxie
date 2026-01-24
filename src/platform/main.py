@@ -47,13 +47,14 @@ async def health():
 # Import and include routers
 # Import and include routers
 # Import and include routers
-from src.platform.routers import providers, requests, offers, bookings, reviews
+from src.platform.routers import providers, requests, offers, bookings, reviews, mcp
 
 app.include_router(providers.router)
 app.include_router(requests.router)
 app.include_router(offers.router)
 app.include_router(bookings.router)
 app.include_router(reviews.router)
+app.include_router(mcp.router)
 
 
 if __name__ == "__main__":

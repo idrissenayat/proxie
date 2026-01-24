@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     # MCP
     MCP_SERVER_NAME: str = "proxie"
     MCP_SERVER_VERSION: str = "0.1.0"
+    MCP_API_KEY: str = "proxie-mcp-secret"
     
     class Config:
         env_file = ".env"
