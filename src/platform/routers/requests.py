@@ -62,6 +62,23 @@ def create_request(
     
     return db_request
 
+@router.get("/", response_model=List[ServiceRequestResponse])
+def list_requests(
+    status: str = None, 
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(get_db)
+):
+    """
+    List service requests, optionally filtered by status.
+    """
+    query = db.query(ServiceRequest)
+    if status:
+        query = query.filter(ServiceRequest.status == status)
+    
+    requests = query.offset(skip).limit(limit).all()
+    return requests
+
 @router.get("/{request_id}", response_model=ServiceRequestResponse)
 def get_request(request_id: UUID, db: Session = Depends(get_db)):
     """

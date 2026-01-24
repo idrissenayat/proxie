@@ -38,6 +38,9 @@ List provider services.
 
 ### Requests
 
+#### GET /requests
+List service requests (supports `?status=` filtering).
+
 #### POST /requests
 Create service request.
 
