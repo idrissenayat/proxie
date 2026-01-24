@@ -30,6 +30,12 @@ Get provider by ID.
 #### PUT /providers/{id}
 Update provider.
 
+#### POST /providers/{id}/services
+Add a service to a provider.
+
+#### GET /providers/{id}/services
+List provider services.
+
 ### Requests
 
 #### POST /requests
