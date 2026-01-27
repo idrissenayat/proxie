@@ -48,11 +48,11 @@ python src/platform/main.py
 # Server runs on http://localhost:8000
 ```
 
-### Frontend Setup
+### Frontend Setup (Next.js 14)
 
 ```bash
-# 1. Navigate to web directory
-cd web
+# 1. Navigate to web-next directory
+cd web-next
 
 # 2. Install dependencies
 npm install
@@ -60,11 +60,13 @@ npm install
 # 3. Set up environment
 cp .env.example .env.local
 # Edit .env.local:
-# VITE_API_URL=http://localhost:8000
+# NEXT_PUBLIC_API_URL=http://localhost:8000
+# NEXT_PUBLIC_SOCKET_URL=http://localhost:8000
+# NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 
 # 4. Run development server
 npm run dev
-# Frontend runs on http://localhost:5173
+# Frontend runs on http://localhost:3000
 ```
 
 ---

@@ -12,7 +12,12 @@ sio = socketio.AsyncServer(
 )
 
 # Wrapper for FastAPI integration
-socket_app = socketio.ASGIApp(sio)
+# Note: We specify the socketio_path to match what the client expects
+socket_app = socketio.ASGIApp(sio, socketio_path='socket.io')
+
+def create_socket_app(main_app):
+    """Wrap a FastAPI app with Socket.io ASGI middleware."""
+    return socketio.ASGIApp(sio, other_asgi_app=main_app, socketio_path='/ws/socket.io')
 
 @sio.event
 async def connect(sid, environ):

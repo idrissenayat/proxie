@@ -1,0 +1,58 @@
+# Kong Ingress Configuration
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: proxie-ingress
+  namespace: proxie
+  annotations:
+    kubernetes.io/ingress.class: kong
+    konghq.com/strip-path: "false"
+    konghq.com/plugins: rate-limiting,cors
+spec:
+  rules:
+  - host: api.proxie.app
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: proxie-api-service
+            port:
+              number: 80
+---
+# Kong Rate Limiting Plugin
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: rate-limiting
+  namespace: proxie
+config:
+  minute: 100
+  policy: local
+plugin: rate-limiting
+---
+# Kong CORS Plugin
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: cors
+  namespace: proxie
+config:
+  origins:
+  - "https://proxie.app"
+  - "https://www.proxie.app"
+  methods:
+  - GET
+  - POST
+  - PUT
+  - PATCH
+  - DELETE
+  - OPTIONS
+  headers:
+  - Authorization
+  - Content-Type
+  - X-API-Key
+  credentials: true
+  max_age: 3600
+plugin: cors

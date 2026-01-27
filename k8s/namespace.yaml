@@ -1,0 +1,20 @@
+# Proxie Kubernetes Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: proxie
+  labels:
+    app: proxie
+---
+# ConfigMap for shared configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: proxie-config
+  namespace: proxie
+data:
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "INFO"
+  REDIS_URL: "redis://redis-service:6379/0"
+  DATABASE_URL: "postgresql://proxie_user:proxie_password@postgres-service:5432/proxie_db"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"

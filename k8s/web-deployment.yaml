@@ -1,0 +1,91 @@
+# Proxie Next.js Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proxie-web
+  namespace: proxie
+  labels:
+    app: proxie-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: proxie-web
+  template:
+    metadata:
+      labels:
+        app: proxie-web
+    spec:
+      containers:
+      - name: web
+        image: gcr.io/PROJECT_ID/proxie-web:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NEXT_PUBLIC_API_URL
+          value: "https://api.proxie.app"
+        - name: NEXT_PUBLIC_WS_URL
+          value: "wss://api.proxie.app"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: proxie-web-service
+  namespace: proxie
+spec:
+  selector:
+    app: proxie-web
+  ports:
+  - port: 80
+    targetPort: 3000
+  type: ClusterIP
+---
+# Frontend Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: proxie-web-ingress
+  namespace: proxie
+  annotations:
+    kubernetes.io/ingress.class: kong
+spec:
+  rules:
+  - host: proxie.app
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: proxie-web-service
+            port:
+              number: 80
+  - host: www.proxie.app
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: proxie-web-service
+            port:
+              number: 80

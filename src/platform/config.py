@@ -23,12 +23,22 @@ class Settings(BaseSettings):
     
     # LLM (Gemini Legacy - will be replaced by LiteLLM)
     GOOGLE_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-1.5-flash"
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_SESSION_DB: int = 0
     REDIS_CACHE_DB: int = 1
     REDIS_QUEUE_DB: int = 2
+    
+    # Celery
+    @property
+    def CELERY_BROKER_URL(self) -> str:
+        return f"{self.REDIS_URL.rsplit('/', 1)[0]}/{self.REDIS_QUEUE_DB}"
+    
+    @property
+    def CELERY_RESULT_BACKEND(self) -> str:
+        return f"{self.REDIS_URL.rsplit('/', 1)[0]}/{self.REDIS_QUEUE_DB}"
     
     # LLM (Target 2.0)
     LLM_PRIMARY_PROVIDER: str = "gemini"
@@ -37,6 +47,9 @@ class Settings(BaseSettings):
     LLM_FALLBACK_MODEL: str = "claude-3-5-sonnet"
     LLM_CACHE_ENABLED: bool = True
     LLM_CACHE_TTL: int = 3600
+    
+    # Worker
+    CELERY_TASK_ALWAYS_EAGER: bool = False
     
     # Sentry & Monitoring
     SENTRY_DSN: str = ""

@@ -6,13 +6,10 @@ including image/video understanding and specialist consultation.
 """
 
 import json
-import logging
 import base64
+import structlog
 from typing import List, Optional, Dict, Any, Tuple
 from uuid import UUID, uuid4
-
-import google.generativeai as genai
-from google.generativeai.types import FunctionDeclaration, Tool
 
 from src.platform.config import settings
 from src.mcp import handlers
@@ -21,17 +18,26 @@ from src.platform.schemas.chat import DraftRequest
 from src.platform.services.media import media_service
 from src.platform.services.specialists import specialist_registry
 from src.platform.services.suggestions import suggestion_service
+from src.platform.services.llm_gateway import llm_gateway
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 CONSUMER_SYSTEM_PROMPT = """You are the Proxie Consumer Agent, a helpful concierge for users looking for services.
 Your goal: Help users gather all necessary info (location, budget, timing) and share media to create a perfect service request.
+
+Context: You have access to {consumer_profile}. Use this info to avoid asking questions about things you already know (like their default location or name).
+
+Account Creation Flow:
+- If 'consumer_id' is present but 'name' or 'default_location' are missing, your first priority is to gather this info naturally.
+- After updating their profile using 'update_consumer_profile', proactively suggest they "Connect their account" so their preferences are saved for future requests.
+- When you update the profile, the UI will show them a 'Connect Now' button. You should mention this.
 
 Capabilities:
 - Analyze photos to identify hair types or service needs.
 - Prepare draft requests and ask for approval.
 - Post requests to the live marketplace via 'create_service_request'.
 - List and help select provider offers via 'get_offers' and 'accept_offer'.
+- Get and update user profile info via 'get_consumer_profile' and 'update_consumer_profile'.
 """
 
 PROVIDER_SYSTEM_PROMPT = """You are the Proxie Provider Agent, an AI companion helping skilled professionals manage their business and leads.
@@ -63,8 +69,11 @@ Your goal: Guide providers through enrollment in a friendly, conversational way.
 Process to follow:
 1. Welcome and explain the enrollment journey.
 2. Collect profile info (name, business name, phone, email).
-3. Select services from the catalog using 'get_service_catalog'. help map their work to specific service types.
-4. Set pricing and durating for each service.
+3. Select services from the catalog using 'get_service_catalog'. 
+   IMPORTANT: If the provider has already mentioned their profession (e.g. "hairstylist", "plumber", "cleaner"), 
+   DO NOT show all categories. Only show the relevant category and its services.
+   For example, if they said "I'm a hairstylist", only show Hair & Beauty services, not Cleaning/Plumbing/etc.
+4. Set pricing and duration for each service.
 5. Set location and service radius.
 6. Collect weekly availability.
 7. Portfolio: encourage 3-10 photos. Use vision to describe and categorize their work.
@@ -76,6 +85,7 @@ Rules:
 - One question at a time.
 - Confirm info before saving using tools.
 - If they seem stuck, suggest typical pricing or durations from catalog metadata.
+- NEVER show unrelated service categories. If someone is a hairstylist, only show hair-related services.
 """
 
 # Keep general prompt as fallback
@@ -83,15 +93,23 @@ SYSTEM_PROMPT = CONSUMER_SYSTEM_PROMPT
 
 # Tool definitions
 ENROLLMENT_TOOL_DECLARATIONS = [
-    FunctionDeclaration(
-        name="get_service_catalog",
-        description="Get the list of service categories and services available on the platform.",
-        parameters={"type": "object", "properties": {}}
-    ),
-    FunctionDeclaration(
-        name="update_enrollment",
-        description="Update provider enrollment data (profile, location, services, etc.) as it's collected.",
-        parameters={
+    {
+        "name": "get_service_catalog",
+        "description": "Get the list of service categories and services available on the platform. Use category_filter to show only relevant categories based on what the provider has said about their profession.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "category_filter": {
+                    "type": "string",
+                    "description": "Optional. Filter to show only a specific category (e.g., 'hair', 'cleaning', 'plumbing'). If the provider said 'I'm a hairstylist', use 'hair' to only show Hair & Beauty services."
+                }
+            }
+        }
+    },
+    {
+        "name": "update_enrollment",
+        "description": "Update provider enrollment data (profile, location, services, etc.) as it's collected.",
+        "parameters": {
             "type": "object",
             "properties": {
                 "full_name": {"type": "string"},
@@ -104,29 +122,29 @@ ENROLLMENT_TOOL_DECLARATIONS = [
                 "bio": {"type": "string"}
             }
         }
-    ),
-    FunctionDeclaration(
-        name="get_enrollment_summary",
-        description="Get the current enrollment summary for review.",
-        parameters={"type": "object", "properties": {}}
-    ),
-    FunctionDeclaration(
-        name="request_portfolio",
-        description="Trigger the portfolio upload interface for the provider.",
-        parameters={"type": "object", "properties": {}}
-    ),
-    FunctionDeclaration(
-        name="submit_enrollment",
-        description="Finalize and submit the enrollment for verification. Only call after user review.",
-        parameters={"type": "object", "properties": {}}
-    )
+    },
+    {
+        "name": "get_enrollment_summary",
+        "description": "Get the current enrollment summary for review.",
+        "parameters": {"type": "object", "properties": {}}
+    },
+    {
+        "name": "request_portfolio",
+        "description": "Trigger the portfolio upload interface for the provider.",
+        "parameters": {"type": "object", "properties": {}}
+    },
+    {
+        "name": "submit_enrollment",
+        "description": "Finalize and submit the enrollment for verification. Only call after user review.",
+        "parameters": {"type": "object", "properties": {}}
+    }
 ]
 
 TOOL_DECLARATIONS = [
-    FunctionDeclaration(
-        name="create_service_request",
-        description="Create a service request AFTER user has approved the draft. This posts the request to find providers.",
-        parameters={
+    {
+        "name": "create_service_request",
+        "description": "Create a service request AFTER user has approved the draft. This posts the request to find providers.",
+        "parameters": {
             "type": "object",
             "properties": {
                 "service_type": {"type": "string", "description": "Type of service needed"},
@@ -140,22 +158,22 @@ TOOL_DECLARATIONS = [
             },
             "required": ["service_type", "city", "budget_min", "budget_max"]
         }
-    ),
-    FunctionDeclaration(
-        name="get_offers",
-        description="Get offers from providers for a service request",
-        parameters={
+    },
+    {
+        "name": "get_offers",
+        "description": "Get offers from providers for a service request",
+        "parameters": {
             "type": "object",
             "properties": {
                 "request_id": {"type": "string", "description": "The service request ID"}
             },
             "required": ["request_id"]
         }
-    ),
-    FunctionDeclaration(
-        name="accept_offer",
-        description="Accept an offer and create a confirmed booking. Only call after user explicitly confirms.",
-        parameters={
+    },
+    {
+        "name": "accept_offer",
+        "description": "Accept an offer and create a confirmed booking. Only call after user explicitly confirms.",
+        "parameters": {
             "type": "object",
             "properties": {
                 "offer_id": {"type": "string", "description": "The offer ID to accept"},
@@ -164,33 +182,33 @@ TOOL_DECLARATIONS = [
             },
             "required": ["offer_id", "slot_date", "slot_start_time"]
         }
-    ),
-    FunctionDeclaration(
-        name="get_my_leads",
-        description="List all new and matching service requests for a provider.",
-        parameters={
+    },
+    {
+        "name": "get_my_leads",
+        "description": "List all new and matching service requests for a provider.",
+        "parameters": {
             "type": "object",
             "properties": {
                 "provider_id": {"type": "string", "description": "The provider ID"}
             },
             "required": ["provider_id"]
         }
-    ),
-    FunctionDeclaration(
-        name="get_lead_details",
-        description="Get full details for a specific lead, including consumer photos, descriptions, and specialist analysis.",
-        parameters={
+    },
+    {
+        "name": "get_lead_details",
+        "description": "Get full details for a specific lead, including consumer photos, descriptions, and specialist analysis.",
+        "parameters": {
             "type": "object",
             "properties": {
                 "request_id": {"type": "string", "description": "The lead/request ID"}
             },
             "required": ["request_id"]
         }
-    ),
-    FunctionDeclaration(
-        name="suggest_offer",
-        description="Get AI suggestions for pricing, timing, and response message for a specific lead.",
-        parameters={
+    },
+    {
+        "name": "suggest_offer",
+        "description": "Get AI suggestions for pricing, timing, and response message for a specific lead.",
+        "parameters": {
             "type": "object",
             "properties": {
                 "request_id": {"type": "string", "description": "The lead ID"},
@@ -198,11 +216,11 @@ TOOL_DECLARATIONS = [
             },
             "required": ["request_id", "provider_id"]
         }
-    ),
-    FunctionDeclaration(
-        name="draft_offer",
-        description="Draft an offer for provider review. Use after 'suggest_offer' or when provider gives price/time.",
-        parameters={
+    },
+    {
+        "name": "draft_offer",
+        "description": "Draft an offer for provider review. Use after 'suggest_offer' or when provider gives price/time.",
+        "parameters": {
             "type": "object",
             "properties": {
                 "request_id": {"type": "string", "description": "The lead ID"},
@@ -213,40 +231,64 @@ TOOL_DECLARATIONS = [
             },
             "required": ["request_id", "price"]
         }
-    ),
-    FunctionDeclaration(
-        name="submit_offer",
-        description="Final submit of an offer AFTER provider has approved the draft.",
-        parameters={
+    },
+    {
+        "name": "submit_offer",
+        "description": "Final submit of an offer AFTER provider has approved the draft.",
+        "parameters": {
             "type": "object",
             "properties": {
                 "draft_id": {"type": "string", "description": "The ID of the approved draft"}
             },
             "required": ["draft_id"]
         }
-    )
+    },
+    {
+        "name": "get_consumer_profile",
+        "description": "Get the consumer's profile information, including their default location and preferences.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "consumer_id": {"type": "string", "description": "The consumer ID"}
+            },
+            "required": ["consumer_id"]
+        }
+    },
+    {
+        "name": "update_consumer_profile",
+        "description": "Update the consumer's profile information, such as name, email, phone, or default location.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "consumer_id": {"type": "string", "description": "The consumer ID"},
+                "name": {"type": "string"},
+                "email": {"type": "string"},
+                "phone": {"type": "string"},
+                "default_location": {"type": "object", "description": "Location info: {city, state, zip, address, lat, lng}"}
+            },
+            "required": ["consumer_id"]
+        }
+    }
 ]
 
-# In-memory session storage
-sessions: Dict[str, Dict[str, Any]] = {}
+# Import session manager
+from src.platform.sessions import session_manager
+
+# sessions: Dict[str, Dict[str, Any]] = {} - REPLACED BY REDIS
 
 
 class ChatService:
     def __init__(self):
         self.is_mock = self._is_mock_mode()
-        if not self.is_mock:
-            genai.configure(api_key=settings.GOOGLE_API_KEY)
+        # genai configuration removed, using llm_gateway
 
     def _is_mock_mode(self) -> bool:
         return not settings.GOOGLE_API_KEY or settings.GOOGLE_API_KEY in ["", "your-gemini-api-key", "your-key-here"]
 
-    def _get_model(self, role: str, provider_id: Optional[UUID] = None) -> Any:
-        """Get a specialized model instance based on role."""
-        if self.is_mock:
-            return None
-            
+    def _get_model_params(self, role: str, provider_id: Optional[UUID] = None) -> Tuple[str, List[Dict]]:
+        """Get specialized model parameters based on role."""
         prompt = CONSUMER_SYSTEM_PROMPT
-        tools = TOOL_DECLARATIONS
+        tools = self._get_openai_tools(TOOL_DECLARATIONS)
         
         if role == "provider" and provider_id:
             provider_info = handlers.get_provider(provider_id)
@@ -259,43 +301,64 @@ class ChatService:
                 )
         elif role == "enrollment":
             prompt = ENROLLMENT_SYSTEM_PROMPT
-            tools = ENROLLMENT_TOOL_DECLARATIONS
-        
-        return genai.GenerativeModel(
-            model_name=settings.GEMINI_MODEL,
-            system_instruction=prompt,
-            tools=[Tool(function_declarations=tools)]
-        )
+            tools = self._get_openai_tools(ENROLLMENT_TOOL_DECLARATIONS)
+            
+        return prompt, tools
+
+    def _get_openai_tools(self, functions: List) -> List[Dict]:
+        """Convert custom/Gemini function declarations to OpenAI tool format."""
+        openai_tools = []
+        for fn in functions:
+            # Handle both list of dicts and list of objects
+            if hasattr(fn, 'to_dict'):
+                fn_dict = fn.to_dict()
+            elif isinstance(fn, dict):
+                fn_dict = fn
+            else:
+                # Fallback for unexpected types
+                fn_dict = {
+                    "name": getattr(fn, 'name', 'unnamed'),
+                    "description": getattr(fn, 'description', ''),
+                    "parameters": getattr(fn, 'parameters', {"type": "object", "properties": {}})
+                }
+
+            openai_tools.append({
+                "type": "function",
+                "function": {
+                    "name": fn_dict["name"],
+                    "description": fn_dict["description"],
+                    "parameters": fn_dict["parameters"]
+                }
+            })
+        return openai_tools
 
     def _get_or_create_session(self, session_id: Optional[str], role: str, provider_id: Optional[UUID]) -> Tuple[str, Dict]:
         """Get existing session or create a new one."""
         if not session_id:
             session_id = str(uuid4())
         
-        if session_id not in sessions:
-            if not self.is_mock:
-                model = self._get_model(role, provider_id)
-                chat = model.start_chat(history=[])
-            else:
-                chat = None
-            
-            sessions[session_id] = {
-                "chat": chat,
+        session = session_manager.get_session(session_id)
+        if not session:
+            system_prompt, tools = self._get_model_params(role, provider_id)
+            session = {
+                "messages": [{"role": "system", "content": system_prompt}],
+                "tools": tools,
                 "context": {
                     "role": role,
                     "provider_id": str(provider_id) if provider_id else None,
                     "current_request_id": None,
                     "current_offers": [],
-                    "gathered_info": {},  # Info gathered during conversation
-                    "media": [],  # Attached media
-                    "media_descriptions": [],  # AI descriptions of media
-                    "draft": None,  # Current draft request
+                    "gathered_info": {},
+                    "media": [],
+                    "media_descriptions": [],
+                    "draft": None,
                     "awaiting_approval": False,
                 },
                 "specialist_feedback": None,
             }
+            session_manager.save_session(session_id, session)
         
-        return session_id, sessions[session_id]
+        return session_id, session
 
     async def handle_chat(
         self, 
@@ -317,6 +380,20 @@ class ChatService:
         session["context"]["role"] = role
         if consumer_id:
             session["context"]["consumer_id"] = str(consumer_id)
+            # Load consumer profile
+            from src.platform.database import SessionLocal
+            from src.platform.models.consumer import Consumer
+            with SessionLocal() as db:
+                consumer = db.query(Consumer).filter(Consumer.id == UUID(str(consumer_id))).first()
+                if consumer:
+                    session["context"]["consumer_profile"] = consumer.to_dict()
+                else:
+                    # Create a default profile if not exists
+                    consumer = Consumer(id=UUID(str(consumer_id)))
+                    db.add(consumer)
+                    db.commit()
+                    db.refresh(consumer)
+                    session["context"]["consumer_profile"] = consumer.to_dict()
         if provider_id:
             session["context"]["provider_id"] = str(provider_id)
         if enrollment_id:
@@ -334,89 +411,110 @@ class ChatService:
                 return session_id, f"Sorry, there was an issue with your media: {error}", None, None, False
             
             stored_media = media_service.store_attachments(media, session_id)
-            session["context"]["media"].extend(stored_media)
+            session["context"]["media"].extend([m.dict() for m in stored_media])
+            
+            # Trigger background analysis
+            try:
+                from src.platform.worker import celery_app
+                celery_app.send_task("analyze_session_media", args=[session_id])
+            except Exception as e:
+                logger.error(f"Failed to trigger background analysis: {e}")
         
         if self.is_mock:
             response_text, data = self._mock_response(message, role, session["context"], stored_media)
             return session_id, response_text, data, session["context"].get("draft"), session["context"].get("awaiting_approval", False)
         
         try:
-            chat = session["chat"]
+            # Build user message content
+            content_list = []
             
-            # Build message parts
-            parts = []
-            
-            # Add context prefix
             context_prefix = f"[User role: {role}]"
             if provider_id:
                 context_prefix += f" [Provider ID: {provider_id}]"
             
-            # Add media to message
+            # Prepare media
             if stored_media:
                 for sm in stored_media:
                     try:
                         media_data = media_service.prepare_for_gemini(sm)
-                        parts.append({
-                            "inline_data": {
-                                "mime_type": media_data["mime_type"],
-                                "data": media_data["data"]
+                        content_list.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{media_data['mime_type']};base64,{media_data['data']}"
                             }
                         })
                     except Exception as e:
-                        logger.error(f"Failed to prepare media for Gemini: {e}")
+                        logger.error(f"Failed to prepare media: {e}")
             
-            # Add text message
+            # Prepare text
+            user_text = ""
             if message:
-                parts.append(f"{context_prefix}\n\nUser: {message}")
+                user_text = f"{context_prefix}\n\nUser: {message}"
             elif stored_media:
-                parts.append(f"{context_prefix}\n\nUser shared {len(stored_media)} {'photo' if len(stored_media) == 1 else 'photos'}.")
+                user_text = f"{context_prefix}\n\nUser shared {len(stored_media)} photos."
             
-            # Send message and get response
-            response = chat.send_message(parts)
+            if user_text:
+                content_list.append({"type": "text", "text": user_text})
             
+            # Setup System Prompt based on role
+            system_prompt = ""
+            if role == "consumer":
+                profile = session["context"].get("consumer_profile", {})
+                system_prompt = CONSUMER_SYSTEM_PROMPT.format(consumer_profile=json.dumps(profile))
+            elif role == "provider":
+                # Assuming provider name is something we have or can get
+                provider_name = session["context"].get("provider_name", "Provider")
+                system_prompt = PROVIDER_SYSTEM_PROMPT.format(provider_name=provider_name)
+            elif role == "enrollment":
+                system_prompt = ENROLLMENT_SYSTEM_PROMPT
+            else:
+                system_prompt = CONSUMER_SYSTEM_PROMPT.format(consumer_profile="{}")
+
+            # Add System Prompt at the beginning of sessions if not present
+            if not session["messages"] or session["messages"][0]["role"] != "system":
+                session["messages"].insert(0, {"role": "system", "content": system_prompt})
+            
+            # Add to session messages
+            session["messages"].append({"role": "user", "content": content_list})
+            
+            response_text = ""
             structured_data = None
             
-            # Handle function calls
-            while response.candidates and response.candidates[0].content.parts:
-                function_call = None
-                text_parts = []
-                
-                for part in response.candidates[0].content.parts:
-                    if hasattr(part, 'function_call') and part.function_call.name:
-                        function_call = part.function_call
-                        break
-                    elif hasattr(part, 'text') and part.text:
-                        text_parts.append(part.text)
-                
-                if not function_call:
-                    break
-                
-                # Execute the function
-                function_name = function_call.name
-                function_args = dict(function_call.args)
-                
-                logger.info(f"Executing function: {function_name} with args: {function_args}")
-                
-                result = self._execute_tool(function_name, function_args, session["context"])
-                
-                # Capture structured data
-                structured_data = self._capture_structured_data(function_name, result, structured_data)
-                
-                # Send function result back
-                function_response = genai.protos.Part(
-                    function_response=genai.protos.FunctionResponse(
-                        name=function_name,
-                        response={"result": json.dumps(result)}
-                    )
+            # Process with LLM (allowing for tool calls)
+            for _ in range(5):  # Max 5 internal turns
+                response = await llm_gateway.chat_completion(
+                    messages=session["messages"],
+                    tools=session["tools"]
                 )
                 
-                response = chat.send_message(function_response)
-            
-            # Extract final text response
-            response_text = ""
-            for part in response.candidates[0].content.parts:
-                if hasattr(part, 'text') and part.text:
-                    response_text += part.text
+                ai_message = response.choices[0].message
+                # Store message for history
+                session["messages"].append(ai_message.to_dict())
+                
+                if ai_message.content:
+                    response_text += ai_message.content
+                
+                if not ai_message.tool_calls:
+                    break
+                
+                # Process tool calls
+                for tool_call in ai_message.tool_calls:
+                    function_name = tool_call.function.name
+                    function_args = json.loads(tool_call.function.arguments)
+                    
+                    logger.info(f"Executing tool: {function_name}", args=function_args)
+                    result = self._execute_tool(function_name, function_args, session["context"])
+                    
+                    # Capture structured data
+                    structured_data = self._capture_structured_data(function_name, result, structured_data)
+                    
+                    # Add tool response to history
+                    session["messages"].append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": function_name,
+                        "content": json.dumps(result)
+                    })
             
             # Consult Specialist if relevant
             await self._consult_specialist(session["context"], message, response_text, stored_media)
@@ -426,8 +524,11 @@ class ChatService:
             awaiting_approval = draft is not None
             
             if draft:
-                session["context"]["draft"] = draft
+                session["context"]["draft"] = draft.dict() if hasattr(draft, 'dict') else draft
                 session["context"]["awaiting_approval"] = True
+            
+            # Save session to Redis
+            session_manager.save_session(session_id, session)
             
             return session_id, response_text, structured_data, draft, awaiting_approval
             
@@ -469,6 +570,7 @@ class ChatService:
                 context["draft"] = None
                 context["awaiting_approval"] = False
                 
+                session_manager.save_session(session_id, session)
                 return (
                     session_id, 
                     f"Done! ✅ Your request has been posted! I'll notify you as soon as stylists respond. Based on your criteria, you should hear back within a few hours!",
@@ -483,6 +585,7 @@ class ChatService:
         elif action == "edit_request":
             context["draft"] = None
             context["awaiting_approval"] = False
+            session_manager.save_session(session_id, session)
             return session_id, "No problem! What would you like to change?", None, None, False
         
         elif action == "cancel_request":
@@ -491,8 +594,10 @@ class ChatService:
             context["gathered_info"] = {}
             context["media"] = []
             context["media_descriptions"] = []
+            session_manager.save_session(session_id, session)
             return session_id, "Request cancelled. Is there something else I can help you with?", None, None, False
         
+        session_manager.save_session(session_id, session)
         return session_id, "I didn't understand that action.", None, context.get("draft"), context.get("awaiting_approval", False)
 
     async def _consult_specialist(self, context: Dict, user_message: Optional[str], assistant_message: str, stored_media: List[StoredMedia]):
@@ -528,7 +633,8 @@ class ChatService:
         )
         
         # Store specialist feedback
-        context["specialist_analysis"] = analysis
+        from dataclasses import asdict
+        context["specialist_analysis"] = asdict(analysis) if hasattr(analysis, '__dataclass_fields__') else analysis
         
         # Update gathered info with enriched data
         if analysis.enriched_data:
@@ -581,13 +687,19 @@ class ChatService:
                 if params.get("style_preferences"):
                     description += f" Style: {params['style_preferences']}."
                 
+                # Use consumer profile location if city is missing from tool call
+                city = params.get("city")
+                if not city:
+                    profile = context.get("consumer_profile", {})
+                    city = profile.get("default_location", {}).get("city", "Unknown")
+                
                 result = handlers.create_service_request(
                     consumer_id=UUID(consumer_id),
                     service_category=params.get("service_type", "general"),
                     service_type=params.get("service_type", ""),
                     raw_input=description,
                     requirements={},
-                    location={"city": params.get("city", "")},
+                    location={"city": city},
                     timing={"urgency": "flexible", "preference": params.get("timing", "")},
                     budget={"min": params.get("budget_min", 0), "max": params.get("budget_max", 100)},
                     media=params.get("media", [])
@@ -617,8 +729,71 @@ class ChatService:
                 
             elif name == "get_service_catalog":
                 from src.platform.services.catalog import catalog_service
-                # Return full categories with services for the UI selector
-                return {"categories": catalog_service.catalog.get("categories", [])}
+                all_categories = catalog_service.catalog.get("categories", [])
+                
+                # Apply category filter if provided
+                category_filter = params.get("category_filter", "").lower() if params else ""
+                if category_filter:
+                    # Filter categories based on the filter term
+                    filter_mappings = {
+                        "hair": ["hair & beauty", "hair and beauty", "beauty", "salon"],
+                        "cleaning": ["cleaning", "home cleaning", "housekeeping"],
+                        "plumbing": ["plumbing", "home repair", "handyman"],
+                        "electrical": ["electrical", "home repair", "handyman"],
+                        "photography": ["photography", "media", "creative"],
+                    }
+                    
+                    # Find matching category names
+                    matching_names = filter_mappings.get(category_filter, [category_filter])
+                    filtered_categories = [
+                        cat for cat in all_categories 
+                        if any(match in cat.get("name", "").lower() for match in matching_names)
+                    ]
+                    
+                    if filtered_categories:
+                        return {"categories": filtered_categories}
+                
+                # Return all categories if no filter or no match
+                return {"categories": all_categories}
+
+            elif name == "get_consumer_profile":
+                consumer_id = params.get("consumer_id") or context.get("consumer_id")
+                if not consumer_id:
+                    return {"error": "No consumer ID available"}
+                
+                from src.platform.database import SessionLocal
+                from src.platform.models.consumer import Consumer
+                with SessionLocal() as db:
+                    consumer = db.query(Consumer).filter(Consumer.id == UUID(str(consumer_id))).first()
+                    if consumer:
+                        return consumer.to_dict()
+                return {"error": "Consumer not found"}
+
+            elif name == "update_consumer_profile":
+                consumer_id = params.get("consumer_id") or context.get("consumer_id")
+                if not consumer_id:
+                    return {"error": "No consumer ID available"}
+                
+                from src.platform.database import SessionLocal
+                from src.platform.models.consumer import Consumer
+                with SessionLocal() as db:
+                    consumer = db.query(Consumer).filter(Consumer.id == UUID(str(consumer_id))).first()
+                    if not consumer:
+                        consumer = Consumer(id=UUID(str(consumer_id)))
+                        db.add(consumer)
+                    
+                    # Update allowed fields
+                    fields = ["name", "email", "phone", "default_location", "preferences"]
+                    for field in fields:
+                        if field in params:
+                            setattr(consumer, field, params[field])
+                    
+                    db.commit()
+                    db.refresh(consumer)
+                    # Update context with new data
+                    context["consumer_profile"] = consumer.to_dict()
+                    return consumer.to_dict()
+
 
             elif name == "update_enrollment":
                 enrollment_id = context.get("enrollment_id")
@@ -784,6 +959,8 @@ class ChatService:
         
         if function_name == "get_offers":
             data["offers"] = result.get("offers", [])
+        elif function_name == "get_consumer_profile" or function_name == "update_consumer_profile":
+            data["consumer_profile"] = result
         elif function_name == "create_service_request":
             data["request_id"] = result.get("request_id")
         elif function_name == "accept_offer" and "booking_id" in result:

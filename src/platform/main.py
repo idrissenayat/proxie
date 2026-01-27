@@ -20,7 +20,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from src.platform.config import settings
-from src.platform.logging import setup_logging
+from src.platform.log_config import setup_logging
 import structlog
 from src.platform.database import engine, Base
 # Import all models to ensure they are registered with Base
@@ -29,6 +29,7 @@ from src.platform.models.request import ServiceRequest
 from src.platform.models.offer import Offer
 from src.platform.models.booking import Booking
 from src.platform.models.review import Review
+from src.platform.models.consumer import Consumer
 
 # Setup Logging
 setup_logging()
@@ -59,7 +60,7 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
     title="Proxie API",
     description="Agent-native platform for skilled service providers",
-    version="0.1.0",
+    version="0.12.0",
 )
 
 # Add rate limiter to app state
@@ -82,6 +83,10 @@ app.add_middleware(
 # Security headers middleware
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
+    # Skip for WebSocket requests as it can cause issues with Starlette's BaseHTTPMiddleware
+    if request.scope.get("type") == "websocket":
+        return await call_next(request)
+        
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -145,12 +150,6 @@ async def ready(request: Request):
     }
 
 
-# Import Socket.io app
-from src.platform.socket_io import socket_app
-
-# Mount Socket.io
-app.mount("/ws", socket_app)
-
 # Import and include routers
 from src.platform.routers import providers, requests, offers, bookings, reviews, mcp, chat, media, consumers, services, enrollment
 
@@ -165,6 +164,14 @@ app.include_router(media.router)
 app.include_router(consumers.router)
 app.include_router(services.router)
 app.include_router(enrollment.router)
+
+# Import Socket.io
+from src.platform.socket_io import create_socket_app
+
+# Wrap app with Socket.io at the very end
+# This handles /ws/socket.io at the root level before hitting FastAPI
+# IMPORTANT: No more FastAPI-specific calls (like include_router) can be made on 'app' after this
+app = create_socket_app(app)
 
 
 if __name__ == "__main__":

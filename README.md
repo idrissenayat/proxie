@@ -20,6 +20,7 @@ A world where consumer agents and provider agents negotiate and transact on beha
 
 ### Installation
 
+**1. Backend**
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/proxie.git
@@ -34,13 +35,24 @@ pip install -r requirements.txt
 
 # Copy environment variables
 cp .env.example .env
-# Edit .env with your configuration
+# Edit .env with your configuration (DB, Redis, Gemini, Clerk)
 
 # Run database migrations
 python scripts/migrate.py
 
 # Start the server
 python -m src.platform.main
+```
+
+**2. Frontend (Next.js 14)**
+```bash
+cd web-next
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
 ```
 
 ### Running Tests
@@ -50,37 +62,18 @@ python -m src.platform.main
 pytest tests/
 ```
 
-### Proxie Web (PWA)
+## Features (Architecture 2.0)
 
-The primary user interface is an **AI Chatbot** powered by Gemini (Google), with a Progressive Web App built with Vite, React, and Tailwind CSS.
+Proxie features a premium, agent-native experience built with **Next.js 14** and **Socket.io**.
 
-**Features:**
-- 🌙 Dark mode Service Marketplace dashboard
-- 💬 Conversational Input Bar (Ask anything)
-- 🎤 Voice input via Web Speech API
-- 🔊 Voice output (text-to-speech)
-- 📸 Multi-modal input (photos, videos)
-- 🎨 Premium UI with glassmorphism and animations
-- ⚡ **Real-time Updates** - Low-latency events via Socket.io
-- 💾 **Redis Sessions** - Scalable, persistent session management
-- 👤 **Provider Enrollment** - Conversational onboarding with AI
-- 📊 **Provider Dashboard** - Leads view and offer management
-- 📋 **Consumer Dashboard** - Request tracking and booking history
-- ✅ **Auto-Verification** - Instant activation for basic services
-- 📝 **Request Details** - Full lifecycle tracking with status timeline
-- 🌟 **Provider Profiles** - Rich portfolios with photos and reviews
-- ✏️ **Edit/Cancel Requests** - Consumer control with safeguards
-- 🔒 **Enterprise-ready Security** - Clerk auth + Kong API Gateway
-
-```bash
-cd web
-
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-```
+- 🌙 **Next.js 14 Dashboard** - High-performance SSR/CSR hybrid dashboard
+- 💬 **Real-time Chat** - Low-latency events via Socket.io
+- 👤 **Clerk Authentication** - Enterprise-grade identity management
+- 👤 **Agent-Native Profile Sync** - AI captures user data during chat
+- 📷 **Multi-modal Vision** - Gemini 2.0 photo/video analysis
+- 💾 **Redis Session Store** - Scalable session management
+- 🛠 **Provider Enrollment** - Conversational onboarding system
+- 🔒 **Infrastructure Hardening** - Kong API Gateway + GKE support
 
 ### Mobile App (Archive)
 
@@ -89,34 +82,30 @@ The legacy mobile interface in `/mobile` is built with Expo. It is currently arc
 ## Documentation
 
 - [Project Overview](docs/project/overview.md)
-- [Vision & Mission](docs/project/vision.md)
+- [Architecture Main](docs/project/proxie_architecture_main.md)
 - [Roadmap](docs/project/roadmap.md)
 - [API Documentation](docs/api/README.md)
-- [Testing Guide](docs/testing/README.md)
-- [Deployment Guide](docs/deployment/README.md)
-- [Sprint 10 Summary](docs/project/sprint_10_summary.md) - Request Details & Provider Profiles
-- [Sprint 9C Summary](docs/project/sprint_9c_summary.md) - Provider Enrollment
-- [Security Audit](docs/security/audit_report.md)
+- [Sprint 11 Summary](docs/project/sprint-11-architecture-2.0.md) - Auth & Profile Sync
 
 ## Project Structure
 
 ```
 proxie/
-├── docs/           # Documentation and specifications
-├── src/            # Source code
-├── web/            # Primary PWA (Vite + React)
-├── mobile/         # Legacy Mobile App (Expo)
-├── tests/          # Test suite
-└── scripts/        # Utility scripts
+├── src/            # Core backend logic (FastAPI + AI Services)
+├── web-next/       # Primary Frontend (Next.js 14)
+├── docs/           # Architecture and Sprint documentation
+├── k8s/            # Kubernetes production manifests
+├── tests/          # Integration and unit tests
+└── scripts/        # Database and utility scripts
 ```
 
-## Technology Stack (Architecture 2.0)
+## Technology Stack
 
-- **UI**: Next.js 14, React, Tailwind CSS
+- **UI**: Next.js 14, Tailwind CSS v4, Lucide
 - **AI**: LiteLLM (Gemini 2.5 + Claude 3.5 Fallback)
-- **Backend**: Python, FastAPI, Celery, Temporal
+- **Backend**: FastAPI, Celery (Redis Queue), Socket.io
 - **Database**: PostgreSQL 16 (pgvector), Redis 7
-- **Operating**: Kubernetes (GKE), Kong API Gateway
+- **Operating**: Kubernetes (GKE), Kong Gateway, OpenTelemetry
 
 ## Contributing
 

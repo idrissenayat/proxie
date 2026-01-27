@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.12.0] - 2026-01-27
+
+### Added - Architecture 2.0 & Hardening
+- **Infrastructure**
+  - Migrated primary UI to **Next.js 14** (web-next)
+  - Integrated **Clerk Authentication** for enterprise-grade security
+  - Moved session management to **Redis Cluster**
+  - Added **Socket.io** for real-time, low-latency communication
+  - Implemented **Health & Readiness** probes for GKE orchestration
+- **Observability**
+  - Integrated **Sentry** for error tracking
+  - Added **OpenTelemetry** tracing and **Grafana/Loki** log collection
+  - Switched to **Structlog** for production-grade structured logging
+- **AI Layer**
+  - Implemented **LiteLLM Gateway** for model fallback and caching
+  - Added **Agent-Native Profile Sync** (Automatic captue of user data)
+- **Frontend**
+  - New **Onboarding Hero** and premium landing pages
+  - **Live Profile Cards** in-chat for real-time visual feedback
+
+---
+
 ## [0.11.0] - 2026-01-27
 
 ### Added - Request Details & Provider Profiles

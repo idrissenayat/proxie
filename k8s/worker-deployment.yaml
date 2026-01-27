@@ -1,0 +1,34 @@
+# Proxie Celery Worker Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proxie-worker
+  namespace: proxie
+  labels:
+    app: proxie-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: proxie-worker
+  template:
+    metadata:
+      labels:
+        app: proxie-worker
+    spec:
+      containers:
+      - name: worker
+        image: gcr.io/PROJECT_ID/proxie-api:latest
+        command: ["celery", "-A", "src.platform.worker.celery_app", "worker", "--loglevel=info"]
+        envFrom:
+        - configMapRef:
+            name: proxie-config
+        - secretRef:
+            name: proxie-secrets
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"

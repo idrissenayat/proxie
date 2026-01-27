@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -10,13 +10,96 @@ from src.platform.models.request import ServiceRequest
 from src.platform.models.offer import Offer
 from src.platform.models.booking import Booking
 from src.platform.models.provider import Provider
+from src.platform.models.consumer import Consumer
 from src.platform.schemas.consumer import ConsumerRequestsResponse
+from pydantic import BaseModel, Field
 
 router = APIRouter(
     prefix="/consumers",
-    tags=["consumers"],
     responses={404: {"description": "Not found"}},
 )
+
+class ConsumerProfileUpdate(BaseModel):
+    """Request body for updating consumer profile."""
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    profile_photo_url: Optional[str] = None
+    default_location: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Default location: {city, state, zip, address, lat, lng}"
+    )
+    notification_preferences: Optional[Dict[str, bool]] = None
+    preferences: Optional[Dict[str, Any]] = None
+
+class ConsumerProfileResponse(BaseModel):
+    """Response for consumer profile."""
+    id: str
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    profile_photo_url: Optional[str] = None
+    default_location: Optional[Dict[str, Any]] = None
+    notification_preferences: Optional[Dict[str, bool]] = None
+    preferences: Optional[Dict[str, Any]] = None
+    created_at: Optional[datetime] = None
+
+@router.get("/{consumer_id}/profile", response_model=ConsumerProfileResponse)
+async def get_consumer_profile(consumer_id: UUID, db: Session = Depends(get_db)):
+    """Get consumer profile. Creates a new profile if it doesn't exist."""
+    consumer = db.query(Consumer).filter(Consumer.id == consumer_id).first()
+    
+    if not consumer:
+        # Create a new consumer record
+        consumer = Consumer(id=consumer_id)
+        db.add(consumer)
+        db.commit()
+        db.refresh(consumer)
+    
+    return consumer.to_dict()
+
+@router.put("/{consumer_id}/profile", response_model=ConsumerProfileResponse)
+async def update_consumer_profile(
+    consumer_id: UUID,
+    update: ConsumerProfileUpdate,
+    db: Session = Depends(get_db)
+):
+    """Update consumer profile. Creates profile if it doesn't exist."""
+    consumer = db.query(Consumer).filter(Consumer.id == consumer_id).first()
+    
+    if not consumer:
+        consumer = Consumer(id=consumer_id)
+        db.add(consumer)
+    
+    # Update fields
+    update_data = update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if value is not None:
+            setattr(consumer, field, value)
+    
+    db.commit()
+    db.refresh(consumer)
+    
+    return consumer.to_dict()
+
+@router.patch("/{consumer_id}/location")
+async def update_consumer_location(
+    consumer_id: UUID,
+    location: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """Quick endpoint to update just the default location."""
+    consumer = db.query(Consumer).filter(Consumer.id == consumer_id).first()
+    
+    if not consumer:
+        consumer = Consumer(id=consumer_id, default_location=location)
+        db.add(consumer)
+    else:
+        consumer.default_location = location
+    
+    db.commit()
+    
+    return {"status": "success", "location": location}
 
 @router.get("/{consumer_id}/requests", response_model=ConsumerRequestsResponse)
 def get_consumer_requests(consumer_id: UUID, db: Session = Depends(get_db)):

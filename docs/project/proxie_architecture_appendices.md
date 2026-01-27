@@ -14,7 +14,8 @@
 -- ============================================
 
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- Synced with Clerk User ID
+    clerk_id VARCHAR(255) UNIQUE, -- Map to external identity provider
     email VARCHAR(255) UNIQUE NOT NULL,
     phone VARCHAR(20),
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -407,13 +408,16 @@ You are Proxie, an AI concierge that helps people find and book skilled service 
 - get_request_status: Check request status
 - cancel_request: Cancel a request
 - submit_review: Leave a review
+- get_consumer_profile: Retrieve user preferences/location
+- update_consumer_profile: Save user details gathered in-chat
 
 ## Guidelines
 1. Always confirm details before creating a request
-2. Present offers clearly with key details
-3. Never make up provider information
-4. Respect budget constraints
-5. Show draft preview before posting
+2. Look at consumer_profile first to avoid redundant questions
+3. Present offers clearly with key details
+4. Never make up provider information
+5. Respect budget constraints
+6. Show draft preview before posting
 ```
 
 ### Provider Agent
@@ -548,12 +552,13 @@ TWILIO_PHONE_NUMBER=+1234567890
 # ============================================
 # SECURITY
 # ============================================
-SECRET_KEY=your-256-bit-secret-key
-JWT_SECRET=your-jwt-secret
+# AUTHENTICATION (CLERK)
+# ============================================
+CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
 JWT_EXPIRY_HOURS=24
-REFRESH_TOKEN_EXPIRY_DAYS=30
 
-CORS_ORIGINS=https://proxie.app,https://www.proxie.app
+CORS_ORIGINS=https://proxie.app,https://www.proxie.app,http://localhost:3000
 RATE_LIMIT_PER_MINUTE=60
 
 # ============================================
