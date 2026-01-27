@@ -7,7 +7,8 @@ Loads settings from environment variables.
 import secrets
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-from typing import List
+from typing import List, Any, Dict, Optional
+from pydantic import model_validator
 
 
 class Settings(BaseSettings):
@@ -17,6 +18,8 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
+    GCP_SECRETS_ENABLED: bool = False
+    GOOGLE_CLOUD_PROJECT: Optional[str] = None
     
     # Database
     DATABASE_URL: str = "postgresql://proxie_user:proxie_password@localhost:5432/proxie_db"
@@ -65,6 +68,10 @@ class Settings(BaseSettings):
     SECRET_KEY: str = secrets.token_urlsafe(32)  # Auto-generate if not set
     API_KEY_HEADER: str = "X-API-Key"
     
+    # Clerk
+    CLERK_SECRET_KEY: str = ""
+    CLERK_PUBLISHABLE_KEY: str = ""
+    
     # CORS - Configurable origins
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"  # Comma-separated
     
@@ -83,6 +90,32 @@ class Settings(BaseSettings):
     # Chat API Key (optional - if set, requires auth for /chat endpoint)
     CHAT_API_KEY: str = ""  # Empty means no auth required (for pilot)
     
+    @model_validator(mode='after')
+    def load_gcp_secrets(self) -> 'Settings':
+        """Fetch secrets from Google Cloud Secret Manager if enabled."""
+        if not self.GCP_SECRETS_ENABLED:
+            return self
+            
+        from src.platform.secrets import get_secret
+        
+        # List of keys that should be fetched from Secret Manager in production
+        secret_keys = [
+            "GOOGLE_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "CLERK_SECRET_KEY",
+            "CLERK_PUBLISHABLE_KEY",
+            "DATABASE_URL",
+            "SENTRY_DSN",
+            "REDIS_URL"
+        ]
+        
+        for key in secret_keys:
+            val = get_secret(key)
+            if val:
+                setattr(self, key, val)
+                
+        return self
+
     @property
     def cors_origins_list(self) -> List[str]:
         """Parse comma-separated CORS origins into a list."""

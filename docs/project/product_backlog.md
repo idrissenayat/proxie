@@ -59,7 +59,7 @@
 
 | ID | Item | Description | Effort | Status |
 |----|------|-------------|--------|--------|
-| P0-005 | GitHub Actions CI | Run tests on every PR | 1d | 🔲 |
+| P0-005 | GitHub Actions CI | Run tests on every PR | 1d | ✅ |
 | P0-006 | GitHub Actions CD | Auto-deploy to GKE on merge to main | 1d | 🔲 |
 | P0-007 | GKE Cluster Setup | Create production GKE Autopilot cluster | 0.5d | 🔲 |
 | P0-008 | Domain & SSL | Configure proxie.app domain with SSL | 0.5d | 🔲 |

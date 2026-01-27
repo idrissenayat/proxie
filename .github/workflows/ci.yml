@@ -1,0 +1,73 @@
+name: Quality & Testing (CI)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff black mypy isort pytest pytest-asyncio
+
+      - name: Lint with Ruff
+        run: ruff check src/ tests/
+
+      - name: Check Formatting (Black)
+        run: black --check src/ tests/
+
+      - name: Check Imports (isort)
+        run: isort --check src/ tests/
+
+      - name: Type Check (mypy)
+        run: mypy src/ --ignore-missing-imports
+
+      - name: Run Backend Tests
+        env:
+          ENVIRONMENT: testing
+          DATABASE_URL: sqlite:///:memory:
+          GOOGLE_API_KEY: mock-key
+          REDIS_URL: redis://localhost:6379/0
+        run: |
+          pytest tests/ --cov=src --cov-report=xml
+
+  frontend-ci:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./web-next
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './web-next/package-lock.json'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Lint Frontend
+        run: npm run lint
+
+      - name: Build Frontend (Check for compilation errors)
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_mock
+          CLERK_SECRET_KEY: sk_test_mock
+        run: npm run build

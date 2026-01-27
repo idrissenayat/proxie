@@ -38,6 +38,7 @@ uvicorn[standard]>=0.27.0
 # Security
 slowapi>=0.1.9
 python-jose[cryptography]>=3.3.0
+google-cloud-secret-manager>=2.20.0
 
 # Monitoring & Observability
 sentry-sdk[fastapi]>=1.40.0
