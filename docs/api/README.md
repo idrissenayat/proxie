@@ -6,7 +6,17 @@ http://localhost:8000
 ```
 
 ## Authentication
-Currently MVP uses no authentication. Provider/Consumer IDs are stored in localStorage.
+Proxie Architecture 2.0 uses **Clerk** for identity management and session handling.
+- **Method:** JWT (JSON Web Token) via Bearer Authorization header.
+- **Roles:** `consumer`, `provider`, `admin`.
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| POST | `/auth/register` | Register new user | None |
+| POST | `/auth/login` | Login user | None |
+| POST | `/auth/logout` | Logout user | Required |
+| POST | `/auth/refresh` | Refresh access token | Refresh |
+| GET | `/auth/me` | Get current user | Required |
 
 ---
 
@@ -163,6 +173,7 @@ Get metadata for a specific service.
 Interact with AI agents (consumer, provider, or enrollment).
 
 **Endpoint:** `POST /chat/`
+**Auth:** Required
 
 **Request Body:**
 ```json
@@ -170,47 +181,40 @@ Interact with AI agents (consumer, provider, or enrollment).
   "message": "I want to be a barber",
   "role": "consumer|provider|enrollment",
   "session_id": "uuid|null",
-  "consumer_id": "uuid|null",
-  "provider_id": "uuid|null",
-  "enrollment_id": "uuid|null",
-  "media": [
-    {
-      "type": "image|video",
-      "data": "base64_string",
-      "mime_type": "image/jpeg"
-    }
-  ],
+  "media": [...],
   "action": "approve_request|submit_enrollment|submit_offer|null"
 }
 ```
 
-**Response:**
-```json
-{
-  "session_id": "uuid",
-  "message": "Agent's text response",
-  "data": {
-    "categories": [...],
-    "requests": [...],
-    "offers": [...],
-    "enrollment_summary": {...}
-  },
-  "draft": {...},
-  "awaiting_approval": false
-}
-```
+---
 
-**Agent Roles:**
-- `consumer`: Helps find services and book providers
-- `provider`: Helps manage leads and create offers
-- `enrollment`: Guides through provider onboarding
+### Chat Sessions
+Manage conversation history and context.
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/chat/sessions` | List user's sessions | Required |
+| GET | `/chat/sessions/{id}` | Get session history | Required |
+| DELETE | `/chat/sessions/{id}` | Delete session | Required |
+| WS | `/chat/ws` | WebSocket connection | Required |
+
+---
+
+## MCP Endpoints (Agent Interface)
+Real-time interface for external agents to interact with Proxie.
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/mcp/sse` | SSE connection | Bearer |
+| POST | `/mcp/messages` | JSON-RPC messages | Bearer |
 
 ---
 
 ## Provider Endpoints
 
-### Get Provider
+### Get Public Profile
 **Endpoint:** `GET /providers/{id}`
+**Auth:** None
 
 **Response:**
 ```json

@@ -63,26 +63,23 @@
 - [x] **Sprint 9C: Provider Enrollment & Verification System**
 - [x] **Sprint 10: Request Details & Provider Profiles**
 
+## Phase 3: Architecture 2.0 - Scale & Reliability (Weeks 11-14)
 
-## Phase 3: Pilot (Weeks 11-14)
+### Week 11: Foundation Hardening
+- [ ] Migrate session management to **Redis** cluster
+- [ ] Implement **Sentry** and OpenTelemetry for observability
+- [ ] Move from polling to **Socket.io** for real-time chat
+- [ ] Implement health check and readiness probe system
 
-### Week 11: Recruit Providers
-- [ ] Identify 10-20 hairstylists
-- [ ] Onboard via agent
-- [ ] Verify quality
-- [ ] Train on system
+### Week 12: Async LLM & Caching
+- [ ] Set up **Celery + Redis** for async agent execution
+- [ ] Implement **LiteLLM Gateway** for model abstraction
+- [ ] Add LLM response caching to reduce latency/cost
 
-### Week 12: Recruit Consumers
-- [ ] Identify 20-30 early consumers
-- [ ] Onboard to AI interface
-- [ ] Set expectations
-
-### Weeks 13-14: Live Transactions
-- [ ] Facilitate real bookings
-- [ ] Monitor end-to-end flow
-- [ ] Support both sides
-- [ ] Collect feedback
-- [ ] Track metrics
+### Weeks 13-14: Frontend Modernization & Infrastructure
+- [ ] Migrate from Vite to **Next.js 14** (App Router)
+- [ ] Deploy to **Kubernetes (GKE)** with autopilot
+- [ ] Set up **Kong API Gateway** for rate limiting/auth
 
 ## Phase 4: Learn & Iterate (Weeks 15-18)
 

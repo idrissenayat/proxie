@@ -6,7 +6,7 @@ Eliminate the digital tax on skilled work. Let anyone with a skill be discovered
 
 ## Vision Statement
 
-A world where consumer agents and provider agents negotiate and transact on behalf of humans — accessible only through AI interfaces. Humans describe needs. Humans do the work. Everything in between is agent-to-agent.
+A world where consumer agents and provider agents negotiate and transact on behalf of humans as an **agent-native marketplace**. Humans describe needs, humans do the work, and everything in between—discovery, negotiation, and logistics—is handled through seamless agent-to-agent interaction.
 
 ## Core Principles
 

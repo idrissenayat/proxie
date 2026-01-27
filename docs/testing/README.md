@@ -4,8 +4,10 @@
 
 ### Prerequisites
 - Backend running on `http://localhost:8000`
-- Frontend running on `http://localhost:5173`
-- PostgreSQL database initialized
+- Redis running on `localhost:6379`
+- Frontend (Next.js) running on `http://localhost:3000`
+- PostgreSQL 16 database initialized
+- Clerk environment variables set
 
 ### Test the Complete Flow
 
@@ -130,28 +132,44 @@ curl -X PUT "http://localhost:8000/offers/$OFFER_ID/accept" \
 
 ---
 
-## 4. Service Catalog
+---
 
-### Test Catalog Endpoints
+## 4. Infrastructure & Connectivity (New!)
+
+### Test Health & Readiness
 ```bash
-# Get full catalog with services
-curl http://localhost:8000/services/catalog/full | jq '.[0]'
+# Check liveness
+curl http://localhost:8000/health | jq
 
-# Get specific category
-curl http://localhost:8000/services/catalog/hair_beauty | jq '.services'
-
-# Get specific service
-curl http://localhost:8000/services/services/haircut | jq
+# Check readiness (DB & Redis connectivity)
+curl http://localhost:8000/ready | jq
 ```
 
-**Expected:**
-- Categories include: Hair & Beauty, Cleaning, Plumbing, Electrical, Photography
-- Each category has nested services array
-- Services include pricing ranges and specializations
+### Test Redis Session Persistence
+1. Start the server.
+2. Send a chat message.
+3. Restart the server.
+4. Verify the session still exists in Redis (`redis-cli KEYS "session:*"`).
 
 ---
 
-## 5. Chat Agent
+## 5. Real-time Communication (Socket.io)
+
+### Test Connection & Room Joining
+Use the provided verification script:
+```bash
+python scripts/verify_phase_1.py
+```
+
+### Manual WebSocket Test
+Using a tool like **Firecamp** or **Postman WebSocket**:
+1. Connect to `ws://localhost:8000/ws/socket.io/?EIO=4&transport=websocket`
+2. Emit `join_session` with `{"session_id": "test-uuid"}`
+3. Verify `chat:echo` when emitting `chat_message`.
+
+---
+
+## 6. Service Catalog
 
 ### Test Enrollment Agent
 ```bash

@@ -13,9 +13,10 @@ A world where consumer agents and provider agents negotiate and transact on beha
 ### Prerequisites
 
 - Python 3.11+
-- PostgreSQL 15+
-- Node.js & npm (for PWA)
-- An Anthropic API key
+- PostgreSQL 16+
+- Redis 7+
+- Node.js 20+ (for Next.js 14)
+- Google Cloud account (Gemini API)
 
 ### Installation
 
@@ -60,6 +61,8 @@ The primary user interface is an **AI Chatbot** powered by Gemini (Google), with
 - 🔊 Voice output (text-to-speech)
 - 📸 Multi-modal input (photos, videos)
 - 🎨 Premium UI with glassmorphism and animations
+- ⚡ **Real-time Updates** - Low-latency events via Socket.io
+- 💾 **Redis Sessions** - Scalable, persistent session management
 - 👤 **Provider Enrollment** - Conversational onboarding with AI
 - 📊 **Provider Dashboard** - Leads view and offer management
 - 📋 **Consumer Dashboard** - Request tracking and booking history
@@ -67,7 +70,7 @@ The primary user interface is an **AI Chatbot** powered by Gemini (Google), with
 - 📝 **Request Details** - Full lifecycle tracking with status timeline
 - 🌟 **Provider Profiles** - Rich portfolios with photos and reviews
 - ✏️ **Edit/Cancel Requests** - Consumer control with safeguards
-- 🔒 Secure API with rate limiting and CORS protection
+- 🔒 **Enterprise-ready Security** - Clerk auth + Kong API Gateway
 
 ```bash
 cd web
@@ -107,14 +110,13 @@ proxie/
 └── scripts/        # Utility scripts
 ```
 
-## Technology Stack
+## Technology Stack (Architecture 2.0)
 
-- **Backend**: Python, FastAPI
-- **Database**: PostgreSQL with pgvector
-- **LLM**: Gemini API (Google)
-- **Agent Protocol**: MCP (Model Context Protocol)
-- **Frontend**: React, Vite, Tailwind CSS (PWA)
-- **Security**: Rate limiting, CORS, security headers
+- **UI**: Next.js 14, React, Tailwind CSS
+- **AI**: LiteLLM (Gemini 2.5 + Claude 3.5 Fallback)
+- **Backend**: Python, FastAPI, Celery, Temporal
+- **Database**: PostgreSQL 16 (pgvector), Redis 7
+- **Operating**: Kubernetes (GKE), Kong API Gateway
 
 ## Contributing
 

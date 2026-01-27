@@ -60,13 +60,13 @@ Done. Under 5 minutes.
 - **Location**: Single city/neighborhood
 - **Why**: Clean service, personal skill matters, current discovery is painful
 
-## Technology Stack
+## Technology Stack (Architecture 2.0)
 
-- **Backend**: Python (FastAPI)
-- **Database**: PostgreSQL with pgvector
-- **LLM**: Gemini API (Google)
-- **Agent Protocol**: MCP (Model Context Protocol)
-- **Interface**: Dark mode conversational dashboard with AI chatbot as primary interaction. Form-based PWA fallback for manual overrides.
+- **UI Layer**: Next.js 14 (App Router) + Socket.io Client
+- **AI Layer**: LiteLLM Gateway (Gemini 2.5 + Claude 3.5 Fallback) + LangGraph
+- **Logic Layer**: FastAPI + Celery (Async Jobs) + Temporal (Workflows)
+- **Data Layer**: PostgreSQL 16 (pgvector) + Redis 7 (Sessions/Cache) + Cloudflare R2
+- **Operating Layer**: Kubernetes (GKE) + Kong API Gateway + OpenTelemetry
 
 ## Success Metrics
 
@@ -80,10 +80,10 @@ Done. Under 5 minutes.
 
 ## Project Phases
 
-1. **Foundation** (Weeks 1-4): Define schemas, design agents, validate
-2. **Core Build** (Weeks 5-10): Build platform, agents, MCP server
-3. **Pilot** (Weeks 11-14): Real providers, real consumers, real transactions
-4. **Iterate** (Weeks 15-18): Learn and improve
+1. **Foundation** (Weeks 1-4): Define schemas, design agents, validate (COMPLETED)
+2. **Core Build** (Weeks 5-10): Build platform, agents, MCP server (COMPLETED)
+3. **Architecture 2.0** (Weeks 11-14): Foundation hardening, Redis sessions, Socket.io, Next.js migration (IN PROGRESS)
+4. **Learn & Iterate** (Weeks 15-18): Learn and improve
 5. **Expand** (Week 19+): Scale what works
 
 ---

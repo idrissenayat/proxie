@@ -10,9 +10,12 @@ The system is currently running in development mode. This guide covers both loca
 
 ### Prerequisites
 - Python 3.11+
-- Node.js 18+
-- PostgreSQL 14+
-- Google Cloud account (for Gemini API)
+- Node.js 20+ (Next.js 14 requirement)
+- PostgreSQL 16+
+- Redis 7+
+- Google Cloud account (for Gemini API & GKE)
+- Clerk account (for Auth)
+- Sentry account (for Monitoring)
 
 ### Backend Setup
 
@@ -73,26 +76,31 @@ npm run dev
 # Database
 DATABASE_URL=postgresql://user:password@localhost:5432/proxie
 
-# Google Gemini API
-GEMINI_API_KEY=your_api_key_here
+# Redis
+REDIS_URL=redis://localhost:6379/0
+
+# Authentication (Clerk)
+CLERK_SECRET_KEY=sk_test_...
+CLERK_PUBLISHABLE_KEY=pk_test_...
+
+# AI Gateway (LiteLLM)
+GOOGLE_API_KEY=your_gemini_key
+ANTHROPIC_API_KEY=your_claude_key
+
+# Monitoring
+SENTRY_DSN=https://...
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 
 # Server
-HOST=0.0.0.0
-PORT=8000
 ENVIRONMENT=development
-
-# CORS
-CORS_ORIGINS=http://localhost:5173,http://localhost:3000
-
-# File Storage (future)
-# AWS_ACCESS_KEY_ID=
-# AWS_SECRET_ACCESS_KEY=
-# S3_BUCKET=proxie-uploads
+LOG_LEVEL=INFO
 ```
 
 ### Frontend (.env.local)
 ```bash
-VITE_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+NEXT_PUBLIC_SOCKET_URL=http://localhost:8000
 ```
 
 ---
@@ -134,85 +142,87 @@ The migration script creates:
 
 ---
 
-## Production Deployment (Future)
+### Production Deployment (Target Architecture 2.0)
 
-### Recommended Stack
-- **Hosting**: Google Cloud Run (containerized FastAPI)
-- **Database**: Google Cloud SQL (PostgreSQL)
-- **Frontend**: Vercel or Netlify
-- **File Storage**: Google Cloud Storage
-- **Monitoring**: Google Cloud Logging + Sentry
+- **Compute**: Google Kubernetes Engine (GKE) Autopilot
+- **Database**: Cloud SQL for PostgreSQL 16
+- **Caching/Sessions**: Google Cloud Memorystore (Redis)
+- **API Gateway**: Kong Gateway (HELM chart on GKE)
+- **Storage**: Cloudflare R2 (S3 compatible)
+- **Auth**: Clerk (External Managed)
 
-### Docker Setup
+### Docker Setup (Architecture 2.0)
 
 #### Backend Dockerfile
 ```dockerfile
 FROM python:3.11-slim
 
 WORKDIR /app
-
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/ ./src/
-COPY scripts/ ./scripts/
-
+COPY . .
 ENV PYTHONPATH=/app
-
 CMD ["uvicorn", "src.platform.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-#### Frontend Dockerfile
+#### Frontend Dockerfile (Next.js)
 ```dockerfile
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS base
 
+# Install dependencies only when needed
+FROM base AS deps
 WORKDIR /app
-COPY package*.json ./
+COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* ./
 RUN npm ci
 
+# Rebuild the source code only when needed
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
-FROM nginx:alpine
-COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Production image, copy all the files and run next
+FROM base AS runner
+WORKDIR /app
+ENV NODE_ENV production
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+EXPOSE 3000
+CMD ["node", "server.js"]
 ```
 
-### Docker Compose (Development)
+### Docker Compose (Local Testing)
 ```yaml
 version: '3.8'
 
 services:
   db:
-    image: postgres:14
-    environment:
-      POSTGRES_DB: proxie
-      POSTGRES_USER: proxie
-      POSTGRES_PASSWORD: dev_password
-    ports:
-      - "5432:5432"
+    image: postgres:16
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=proxie
+      - POSTGRES_PASSWORD=password
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
 
   backend:
     build: .
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://proxie:dev_password@db:5432/proxie
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      - DATABASE_URL=postgresql://postgres:password@db:5432/proxie
+      - REDIS_URL=redis://redis:6379/0
     depends_on:
       - db
-
-  frontend:
-    build: ./web
-    ports:
-      - "5173:80"
-    environment:
-      VITE_API_URL: http://localhost:8000
+      - redis
 
 volumes:
   postgres_data:

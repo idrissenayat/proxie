@@ -21,9 +21,28 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql://proxie_user:proxie_password@localhost:5432/proxie_db"
     
-    # LLM (Gemini)
+    # LLM (Gemini Legacy - will be replaced by LiteLLM)
     GOOGLE_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.0-flash"
+    
+    # Redis
+    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_SESSION_DB: int = 0
+    REDIS_CACHE_DB: int = 1
+    REDIS_QUEUE_DB: int = 2
+    
+    # LLM (Target 2.0)
+    LLM_PRIMARY_PROVIDER: str = "gemini"
+    LLM_PRIMARY_MODEL: str = "gemini-2.0-flash"
+    LLM_FALLBACK_PROVIDER: str = "anthropic"
+    LLM_FALLBACK_MODEL: str = "claude-3-5-sonnet"
+    LLM_CACHE_ENABLED: bool = True
+    LLM_CACHE_TTL: int = 3600
+    
+    # Sentry & Monitoring
+    SENTRY_DSN: str = ""
+    SENTRY_ENVIRONMENT: str = "development"
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.1
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4317"
     
     # Server
     HOST: str = "0.0.0.0"
@@ -42,7 +61,11 @@ class Settings(BaseSettings):
     MCP_API_KEY: str = secrets.token_urlsafe(24)  # Auto-generate if not set
     
     # Rate Limiting
-    RATE_LIMIT_PER_MINUTE: int = 30
+    RATE_LIMIT_PER_MINUTE: int = 60
+    
+    # Features
+    FEATURE_WEBSOCKET_ENABLED: bool = True
+    FEATURE_LLM_CACHING_ENABLED: bool = True
     
     # Chat API Key (optional - if set, requires auth for /chat endpoint)
     CHAT_API_KEY: str = ""  # Empty means no auth required (for pilot)

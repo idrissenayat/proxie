@@ -4,14 +4,24 @@ Proxie API Server
 Main entry point for the FastAPI application.
 """
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from opentelemetry import trace
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from src.platform.config import settings
+from src.platform.logging import setup_logging
+import structlog
 from src.platform.database import engine, Base
 # Import all models to ensure they are registered with Base
 from src.platform.models.provider import Provider, ProviderLeadView
@@ -19,6 +29,26 @@ from src.platform.models.request import ServiceRequest
 from src.platform.models.offer import Offer
 from src.platform.models.booking import Booking
 from src.platform.models.review import Review
+
+# Setup Logging
+setup_logging()
+logger = structlog.get_logger()
+
+# Initialize Sentry
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        integrations=[FastApiIntegration()],
+        environment=settings.SENTRY_ENVIRONMENT,
+        traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
+    )
+
+# Setup OpenTelemetry
+resource = Resource(attributes={SERVICE_NAME: "proxie-api"})
+provider = TracerProvider(resource=resource)
+processor = BatchSpanProcessor(OTLPSpanExporter(endpoint=settings.OTEL_EXPORTER_OTLP_ENDPOINT))
+provider.add_span_processor(processor)
+trace.set_tracer_provider(provider)
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -35,6 +65,9 @@ app = FastAPI(
 # Add rate limiter to app state
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Instrument FastAPI with OpenTelemetry
+FastAPIInstrumentor.instrument_app(app)
 
 # CORS middleware - Use configured origins
 app.add_middleware(
@@ -73,12 +106,50 @@ async def root(request: Request):
 @app.get("/health")
 @limiter.limit(f"{settings.RATE_LIMIT_PER_MINUTE}/minute")
 async def health(request: Request):
-    """Detailed health check."""
+    """Liveness probe."""
     return {
         "status": "healthy",
-        "environment": settings.ENVIRONMENT,
+        "timestamp": structlog.processors.TimeStamper(fmt="iso")(None, None, {})["timestamp"],
+        "version": app.version,
     }
 
+
+@app.get("/ready")
+@limiter.limit(f"{settings.RATE_LIMIT_PER_MINUTE}/minute")
+async def ready(request: Request):
+    """Readiness probe."""
+    from src.platform.database import check_db_connection
+    from src.platform.sessions import session_manager
+    
+    db_up = check_db_connection()
+    redis_up = session_manager.check_health()
+    
+    if not db_up or not redis_up:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "not ready",
+                "checks": {
+                    "database": "up" if db_up else "down",
+                    "redis": "up" if redis_up else "down",
+                }
+            }
+        )
+        
+    return {
+        "status": "ready",
+        "checks": {
+            "database": "up",
+            "redis": "up",
+        }
+    }
+
+
+# Import Socket.io app
+from src.platform.socket_io import socket_app
+
+# Mount Socket.io
+app.mount("/ws", socket_app)
 
 # Import and include routers
 from src.platform.routers import providers, requests, offers, bookings, reviews, mcp, chat, media, consumers, services, enrollment
