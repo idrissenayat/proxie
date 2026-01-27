@@ -1,0 +1,96 @@
+name: Deployment (CD)
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GKE_CLUSTER: proxie-cluster
+  GKE_ZONE: us-central1
+  IMAGE_API: gcr.io/${{ secrets.GCP_PROJECT_ID }}/proxie-api
+  IMAGE_WEB: gcr.io/${{ secrets.GCP_PROJECT_ID }}/proxie-web
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # Authentication
+    - id: 'auth'
+      uses: 'google-github-actions/auth@v2'
+      with:
+        credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+    - name: 'Set up Cloud SDK'
+      uses: 'google-github-actions/setup-gcloud@v2'
+
+    - name: 'Configure Docker'
+      run: |-
+        gcloud auth configure-docker --quiet
+
+    - name: 'Get GKE credentials'
+      uses: 'google-github-actions/get-gke-credentials@v2'
+      with:
+        cluster_name: ${{ env.GKE_CLUSTER }}
+        location: ${{ env.GKE_ZONE }}
+
+    # Build and Push Backend
+    - name: Build Backend Image
+      run: |-
+        docker build \
+          --tag "$IMAGE_API:${{ github.sha }}" \
+          --tag "$IMAGE_API:latest" \
+          .
+
+    - name: Push Backend Image
+      run: |-
+        docker push "$IMAGE_API:${{ github.sha }}"
+        docker push "$IMAGE_API:latest"
+
+    # Build and Push Frontend
+    - name: Build Frontend Image
+      run: |-
+        cd web-next
+        docker build \
+          --tag "$IMAGE_WEB:${{ github.sha }}" \
+          --tag "$IMAGE_WEB:latest" \
+          --build-arg NEXT_PUBLIC_API_URL="https://api.proxie.app" \
+          --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="${{ secrets.CLERK_PUBLISHABLE_KEY }}" \
+          .
+
+    - name: Push Frontend Image
+      run: |-
+        docker push "$IMAGE_WEB:${{ github.sha }}"
+        docker push "$IMAGE_WEB:latest"
+
+    # Deploy to GKE
+    - name: Deploy to GKE
+      run: |-
+        # Replace PROJECT_ID placeholder in manifests
+        sed -i "s/PROJECT_ID/$PROJECT_ID/g" k8s/*.yaml
+        
+        # 1. Apply Infrastructure and Namespaces
+        kubectl apply -f k8s/namespace.yaml
+        kubectl apply -f k8s/redis-deployment.yaml
+        kubectl apply -f k8s/postgres-statefulset.yaml
+        
+        # 2. Apply Application manifests (initially with :latest or whatever is in file)
+        kubectl apply -f k8s/api-deployment.yaml
+        kubectl apply -f k8s/worker-deployment.yaml
+        kubectl apply -f k8s/web-deployment.yaml
+        kubectl apply -f k8s/ingress.yaml
+        
+        # 3. Force update to the specific SHA for traceability and consistency
+        kubectl set image deployment/proxie-api api=$IMAGE_API:${{ github.sha }} -n proxie
+        kubectl set image deployment/proxie-worker worker=$IMAGE_API:${{ github.sha }} -n proxie
+        kubectl set image deployment/proxie-web web=$IMAGE_WEB:${{ github.sha }} -n proxie
+        
+        # 4. Wait for rollouts
+        kubectl rollout status deployment/proxie-api -n proxie
+        kubectl rollout status deployment/proxie-web -n proxie
