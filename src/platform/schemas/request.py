@@ -2,6 +2,7 @@ from datetime import date, datetime, time
 from typing import List, Optional, Literal
 from uuid import UUID
 from pydantic import BaseModel, Field, condecimal
+from src.platform.schemas.media import StoredMedia
 
 # --- Location ---
 class RequestLocation(BaseModel):
@@ -41,13 +42,16 @@ class ServiceRequestCreate(BaseModel):
     location: RequestLocation
     timing: RequestTiming
     budget: RequestBudget
+    media: List[StoredMedia] = []
 
 class ServiceRequestResponse(ServiceRequestCreate):
     id: UUID
     created_at: datetime
     updated_at: Optional[datetime] = None
     status: str
+    status_history: List[dict] = []  # Sprint 10: Timeline tracking
     matched_providers: List[UUID] = []
+    viewed_by_current_provider: Optional[bool] = None
     
     class Config:
         from_attributes = True

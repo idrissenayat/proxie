@@ -23,8 +23,10 @@ class Provider(Base):
     verified = Column(Boolean, default=False)
     
     # Profile
+    business_name = Column(String(255))  # Optional business/brand name
     bio = Column(Text)
     profile_photo_url = Column(String(500))
+    years_experience = Column(Integer)
     
     # Location (stored as JSON for flexibility)
     location = Column(JSON)
@@ -43,5 +45,50 @@ class Provider(Base):
     review_count = Column(Integer, default=0)
     completed_bookings = Column(Integer, default=0)
     
+    # Sprint 10: Performance Stats
+    jobs_completed = Column(Integer, default=0)
+    response_rate = Column(Float, default=0.0)  # Percentage (0-100)
+    average_response_time_hours = Column(Float)
+    
+    # Sprint 9: Offer Templates
+    offer_templates = Column(JSON, default=list)
+    
     # Status
     status = Column(String(50), default="active")
+
+class ProviderLeadView(Base):
+    """Tracks when a provider has viewed a specific lead."""
+    __tablename__ = "provider_lead_views"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    provider_id = Column(UUID(as_uuid=True), index=True)
+    request_id = Column(UUID(as_uuid=True), index=True)
+    viewed_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class ProviderEnrollment(Base):
+    """Temporary storage for a provider's enrollment process."""
+    __tablename__ = "provider_enrollments"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    status = Column(String(50), default="draft") # draft, pending, verified, rejected
+    
+    # Store all conversational gathering in a JSON block
+    data = Column(JSON, default=dict)
+    
+    # Links to a permanent provider record once activated
+    provider_id = Column(UUID(as_uuid=True), nullable=True)
+
+class ProviderPortfolioPhoto(Base):
+    """Portfolio photos for a provider."""
+    __tablename__ = "provider_portfolio_photos"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    provider_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    photo_url = Column(String(500), nullable=False)
+    caption = Column(Text)
+    display_order = Column(Integer, default=0)  # For manual ordering

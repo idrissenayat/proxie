@@ -1,6 +1,6 @@
 # Sprint 4A Summary: Mobile App MVP
 **Date**: 2026-01-24
-**Status**: Completed
+**Status**: Superseded (See [Sprint 4B](./sprint_4b_summary.md) for PWA implementation)
 
 ## 🎯 Objective
 Create a functional Mobile Application using Expo (React Native) to allow Consumers to request services and Providers to fulfill them, serving as the primary user interface for the platform.
@@ -11,6 +11,7 @@ Create a functional Mobile Application using Expo (React Native) to allow Consum
 - [x] **Framework**: Initialized Expo/React Native project.
 - [x] **Navigation**: Implemented `react-navigation` with Stack Navigator.
 - [x] **State Management**: Using local React state and Polling data fetching.
+- [x] **Web Support**: Configured `react-native-web`, established `web/index.html`, and implemented `App.web.js` for a stable browser landing page.
 
 ### 2. User Flows Implemented
 - **Consumer Flow**:

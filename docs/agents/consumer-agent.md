@@ -4,26 +4,32 @@
 
 The Consumer Agent helps users find and book service providers by:
 1. Understanding their natural language requests
-2. Creating structured service requests
-3. Presenting matched offers
-4. Facilitating booking
+2. **Analyzing visual media (photos/videos) shared by the user**
+3. **Drafting structured service requests (with Specialist validation)**
+4. Presenting matched offers
+5. Facilitating booking
 
 ## Capabilities
 
-### 1. Parse Natural Language
+### 1. Parse Natural Language & Vision
 
-**Input:** "I need a haircut for curly hair in Brooklyn this weekend"
+The agent processes both text and visual media to extract structured data:
+- **Input:** "I need a haircut for curly hair in Brooklyn" + [Photo]
+- **Output:** Structured request with specialist-enriched metadata.
 
-**Output:**
-```json
-{
-  "service_category": "hairstylist",
-  "service_type": "haircut",
-  "requirements": {"specializations": ["curly hair"]},
-  "location": {"city": "Brooklyn"},
-  "timing": {"preferred_dates": ["2026-01-24", "2026-01-25"]}
-}
-```
+### 2. Multi-Modal Analysis
+
+Processes image and video attachments to:
+- Identify hair type, length, and texture (Hair Specialist).
+- Verify service complexity (e.g., plumbing damage level).
+- Extract style preferences from reference photos from conversation history.
+
+### 3. Specialist Consultation
+
+When a domain is identified, the agent consults a Specialist:
+- **Input:** User's raw text + AI vision descriptions.
+- **Action:** Specialist validates data, fills in missing technical details, and provides "specialist notes" for the request.
+- **Output:** Enriched service request metadata.
 
 ### 2. Ask Clarifying Questions
 

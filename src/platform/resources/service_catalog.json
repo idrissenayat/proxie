@@ -1,0 +1,123 @@
+{
+    "categories": [
+        {
+            "id": "hair_beauty",
+            "name": "Hair & Beauty",
+            "icon": "Scissors",
+            "verification_level": "basic",
+            "services": [
+                {
+                    "id": "haircut",
+                    "name": "Haircut",
+                    "description": "Hair cutting and styling",
+                    "requires_license": false,
+                    "min_photos": 3,
+                    "typical_price_range": {
+                        "min": 30,
+                        "max": 100
+                    },
+                    "specializations": [
+                        "Men's cuts",
+                        "Women's cuts",
+                        "Kids' cuts",
+                        "Curly hair",
+                        "Fades"
+                    ]
+                },
+                {
+                    "id": "hair_color",
+                    "name": "Hair Color",
+                    "description": "Hair coloring and chemical treatments",
+                    "requires_license": false,
+                    "min_photos": 3,
+                    "typical_price_range": {
+                        "min": 80,
+                        "max": 300
+                    },
+                    "specializations": [
+                        "Highlights",
+                        "Balayage",
+                        "Single process",
+                        "Color correction"
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "home_cleaning",
+            "name": "Cleaning",
+            "icon": "Wind",
+            "verification_level": "basic",
+            "services": [
+                {
+                    "id": "standard_cleaning",
+                    "name": "Standard Cleaning",
+                    "description": "Regular home maintenance cleaning",
+                    "requires_license": false,
+                    "min_photos": 0,
+                    "typical_price_range": {
+                        "min": 80,
+                        "max": 200
+                    }
+                }
+            ]
+        },
+        {
+            "id": "plumbing",
+            "name": "Plumbing",
+            "icon": "Wrench",
+            "verification_level": "licensed",
+            "services": [
+                {
+                    "id": "leak_repair",
+                    "name": "Leak Repair",
+                    "description": "Fixing leaking pipes and fixtures",
+                    "requires_license": true,
+                    "min_photos": 2,
+                    "typical_price_range": {
+                        "min": 100,
+                        "max": 500
+                    }
+                }
+            ]
+        },
+        {
+            "id": "electrical",
+            "name": "Electrical",
+            "icon": "Zap",
+            "verification_level": "licensed",
+            "services": [
+                {
+                    "id": "lighting",
+                    "name": "Lighting Installation",
+                    "description": "Installing and repairing lights",
+                    "requires_license": true,
+                    "min_photos": 3,
+                    "typical_price_range": {
+                        "min": 150,
+                        "max": 600
+                    }
+                }
+            ]
+        },
+        {
+            "id": "photography",
+            "name": "Photography",
+            "icon": "Camera",
+            "verification_level": "basic",
+            "services": [
+                {
+                    "id": "portrait",
+                    "name": "Portrait Photography",
+                    "description": "Individual or group portraits",
+                    "requires_license": false,
+                    "min_photos": 5,
+                    "typical_price_range": {
+                        "min": 100,
+                        "max": 500
+                    }
+                }
+            ]
+        }
+    ]
+}

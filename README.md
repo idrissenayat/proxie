@@ -14,6 +14,7 @@ A world where consumer agents and provider agents negotiate and transact on beha
 
 - Python 3.11+
 - PostgreSQL 15+
+- Node.js & npm (for PWA)
 - An Anthropic API key
 
 ### Installation
@@ -44,16 +45,55 @@ python -m src.platform.main
 ### Running Tests
 
 ```bash
+# Backend tests
 pytest tests/
 ```
+
+### Proxie Web (PWA)
+
+The primary user interface is an **AI Chatbot** powered by Gemini (Google), with a Progressive Web App built with Vite, React, and Tailwind CSS.
+
+**Features:**
+- 🌙 Dark mode Service Marketplace dashboard
+- 💬 Conversational Input Bar (Ask anything)
+- 🎤 Voice input via Web Speech API
+- 🔊 Voice output (text-to-speech)
+- 📸 Multi-modal input (photos, videos)
+- 🎨 Premium UI with glassmorphism and animations
+- 👤 **Provider Enrollment** - Conversational onboarding with AI
+- 📊 **Provider Dashboard** - Leads view and offer management
+- 📋 **Consumer Dashboard** - Request tracking and booking history
+- ✅ **Auto-Verification** - Instant activation for basic services
+- 📝 **Request Details** - Full lifecycle tracking with status timeline
+- 🌟 **Provider Profiles** - Rich portfolios with photos and reviews
+- ✏️ **Edit/Cancel Requests** - Consumer control with safeguards
+- 🔒 Secure API with rate limiting and CORS protection
+
+```bash
+cd web
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+```
+
+### Mobile App (Archive)
+
+The legacy mobile interface in `/mobile` is built with Expo. It is currently archived as the project focuses on the PWA.
 
 ## Documentation
 
 - [Project Overview](docs/project/overview.md)
 - [Vision & Mission](docs/project/vision.md)
-- [Data Schemas](docs/schemas/)
-- [Agent Specifications](docs/agents/)
-- [API Documentation](docs/api/)
+- [Roadmap](docs/project/roadmap.md)
+- [API Documentation](docs/api/README.md)
+- [Testing Guide](docs/testing/README.md)
+- [Deployment Guide](docs/deployment/README.md)
+- [Sprint 10 Summary](docs/project/sprint_10_summary.md) - Request Details & Provider Profiles
+- [Sprint 9C Summary](docs/project/sprint_9c_summary.md) - Provider Enrollment
+- [Security Audit](docs/security/audit_report.md)
 
 ## Project Structure
 
@@ -61,21 +101,20 @@ pytest tests/
 proxie/
 ├── docs/           # Documentation and specifications
 ├── src/            # Source code
-│   ├── platform/   # Core backend services
-│   ├── agents/     # Consumer and provider agents
-│   └── mcp/        # MCP server for external agents
+├── web/            # Primary PWA (Vite + React)
+├── mobile/         # Legacy Mobile App (Expo)
 ├── tests/          # Test suite
-├── scripts/        # Utility scripts
-├── research/       # User research and validation
-└── pilot/          # Pilot program tracking
+└── scripts/        # Utility scripts
 ```
 
 ## Technology Stack
 
 - **Backend**: Python, FastAPI
 - **Database**: PostgreSQL with pgvector
-- **LLM**: Claude API (Anthropic)
+- **LLM**: Gemini API (Google)
 - **Agent Protocol**: MCP (Model Context Protocol)
+- **Frontend**: React, Vite, Tailwind CSS (PWA)
+- **Security**: Rate limiting, CORS, security headers
 
 ## Contributing
 

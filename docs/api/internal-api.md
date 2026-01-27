@@ -74,6 +74,11 @@ Cancel booking.
 #### POST /reviews
 Create review.
 
+### Chat
+
+#### POST /chat
+Send a message to the Proxie AI Agent. See [chat.md](./chat.md) for full documentation.
+
 ---
 
 Full OpenAPI spec available at `/docs` when server is running.

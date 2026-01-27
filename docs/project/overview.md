@@ -24,6 +24,20 @@ Proxie eliminates the digital tax on skilled work:
 
 ## How It Works
 
+### Provider Enrollment
+```
+Provider: "I want to become a provider"
+    ↓
+Enrollment Agent: Guides through conversational onboarding
+    ↓
+Provider: Selects services, sets pricing, adds portfolio
+    ↓
+Verification Service: Auto-verifies basic services, queues licensed services
+    ↓
+Provider activated and ready to receive leads
+```
+
+### Consumer Request & Booking
 ```
 Consumer: "I need a haircut for curly hair, Brooklyn, this weekend"
     ↓
@@ -50,9 +64,9 @@ Done. Under 5 minutes.
 
 - **Backend**: Python (FastAPI)
 - **Database**: PostgreSQL with pgvector
-- **LLM**: Claude API (Anthropic)
+- **LLM**: Gemini API (Google)
 - **Agent Protocol**: MCP (Model Context Protocol)
-- **Interface**: AI-native only (no traditional web UI)
+- **Interface**: Dark mode conversational dashboard with AI chatbot as primary interaction. Form-based PWA fallback for manual overrides.
 
 ## Success Metrics
 

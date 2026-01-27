@@ -50,7 +50,17 @@ Any MCP-compliant client (e.g., Claude Desktop, Zed, or custom scripts) can conn
 | `get_matching_requests` | Provider | See new leads matching skills/location. |
 | `submit_offer` | Provider | Send a price/slot proposal to a consumer. |
 
+### 4. Verification & QA
+- [x] **Backend API**: Verified full transaction flow (Consumer -> Match -> Provider -> Offer -> Accept -> Complete) via `tests/test_api_flow.py`.
+- [x] **Mobile App**: 
+  - Verified React Native bundle generation via `npx expo start`.
+  - Configured API Client to use local LAN IP (`192.168.1.237`).
+  - **Web Support Enabled**:
+    - Infrastructure: Added `babel.config.js`, `web/index.html`, `react-native-web`.
+    - Functionality: Implemented `App.web.js` to serve a stable "Under Construction" portal for web users, ensuring the web build does not crash.
+    - Native: Full navigation stack verified intact on `App.js`.
+
 ## ⏭️ Next Steps (Pilot preparation)
-1. **End-to-End Test**: Simulate a full conversation where one agent plays Consumer and another plays Provider.
+1. [x] **End-to-End Test**: Simulated full transaction flow via API tests.
 2. **Deploy**: Move from `localhost` to a hosted environment (e.g., Railway/Render).
 3. **Pilot**: Onboard the first real users.

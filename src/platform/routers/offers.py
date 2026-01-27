@@ -17,6 +17,23 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
+@router.get("/", response_model=List[OfferResponse])
+def list_offers(
+    provider_id: UUID = None,
+    request_id: UUID = None,
+    db: Session = Depends(get_db)
+):
+    """
+    List offers, optionally filtered by provider or request.
+    """
+    query = db.query(Offer)
+    if provider_id:
+        query = query.filter(Offer.provider_id == provider_id)
+    if request_id:
+        query = query.filter(Offer.request_id == request_id)
+        
+    return query.all()
+
 @router.post("/", response_model=OfferResponse, status_code=status.HTTP_201_CREATED)
 def create_offer(
     offer: OfferCreate, 

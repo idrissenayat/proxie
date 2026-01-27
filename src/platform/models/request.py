@@ -34,7 +34,11 @@ class ServiceRequest(Base):
     
     # Status
     status = Column(String(50), default="pending")
+    status_history = Column(JSON, default=list)  # Sprint 10: Timeline tracking
     
     # Results
     matched_providers = Column(JSON, default=list)
     selected_offer_id = Column(UUID(as_uuid=True))
+    
+    # Sprint 8: Media support
+    media = Column(JSON, default=list)

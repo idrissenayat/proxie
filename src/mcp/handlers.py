@@ -21,7 +21,8 @@ def create_service_request(
     requirements: Dict[str, Any],
     location: Dict[str, Any],
     timing: Dict[str, Any],
-    budget: Dict[str, Any]
+    budget: Dict[str, Any],
+    media: List[Dict[str, Any]] = []
 ) -> Dict[str, Any]:
     with SessionLocal() as db:
         # Create Request
@@ -35,6 +36,7 @@ def create_service_request(
             location=location,
             timing=timing,
             budget=budget,
+            media=media,
             status="matching"
         )
         db.add(req)
@@ -70,7 +72,8 @@ def create_service_request(
             requirements=RequestRequirements(**requirements),
             location=RequestLocation(**location),
             timing=RequestTiming(**timing),
-            budget=RequestBudget(**budget)
+            budget=RequestBudget(**budget),
+            media=media
         )
         
         matched_ids = matcher.find_providers(schema)
@@ -236,3 +239,37 @@ def submit_offer(
             
         db.commit()
         return {"offer_id": str(offer.id), "status": "submitted"}
+
+def get_provider(provider_id: UUID) -> Dict[str, Any]:
+    with SessionLocal() as db:
+        p = db.query(Provider).filter(Provider.id == provider_id).first()
+        if not p:
+            return {"error": "Provider not found"}
+        return {
+            "id": str(p.id),
+            "name": p.name,
+            "specializations": p.specializations,
+            "availability": p.availability,
+            "offer_templates": p.offer_templates,
+            "rating": p.rating,
+            "status": p.status
+        }
+
+def mark_lead_viewed(provider_id: UUID, request_id: UUID) -> Dict[str, Any]:
+    from src.platform.models.provider import ProviderLeadView
+    with SessionLocal() as db:
+        existing = db.query(ProviderLeadView).filter(
+            ProviderLeadView.provider_id == provider_id,
+            ProviderLeadView.request_id == request_id
+        ).first()
+        
+        if not existing:
+            view = ProviderLeadView(
+                id=uuid4(),
+                provider_id=provider_id,
+                request_id=request_id
+            )
+            db.add(view)
+            db.commit()
+            return {"status": "marked_viewed"}
+        return {"status": "already_viewed"}

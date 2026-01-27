@@ -3,7 +3,7 @@ import axios from 'axios';
 // Will need to update to local IP for phone testing
 // For iOS Simulator: http://localhost:8000
 // For Android Emulator: http://10.0.2.2:8000
-const API_URL = 'http://localhost:8000';
+const API_URL = 'http://192.168.1.237:8000';
 
 const api = axios.create({
     baseURL: API_URL,
@@ -32,7 +32,7 @@ export const acceptOffer = (offerId, slot) => api.put(`/offers/${offerId}/accept
 
 export const getProviders = () => api.get('/providers');
 
-# Support for new Services endpoint
+// Support for new Services endpoint
 export const getProviderServices = (providerId) => api.get(`/providers/${providerId}/services`);
 
 export const submitOffer = (data) => api.post('/offers', data);
