@@ -103,7 +103,7 @@ async def handle_call_tool(name: str, arguments: Any) -> Sequence[TextContent | 
         args = arguments or {}
         
         if name == "create_service_request":
-            result = handlers.create_service_request(
+            result = await handlers.create_service_request(
                 UUID(args["consumer_id"]),
                 args["service_category"],
                 args["service_type"],

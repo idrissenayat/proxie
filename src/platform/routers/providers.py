@@ -1,6 +1,6 @@
-from typing import List
+from typing import List, Dict, Any
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from src.platform.database import get_db
@@ -13,6 +13,7 @@ from src.platform.schemas.provider import (
 )
 from src.platform.schemas.service import ServiceCreate, ServiceResponse
 from src.platform.auth import get_current_user
+from src.platform.services.matching import MatchingService
 
 router = APIRouter(
     prefix="/providers",
@@ -37,7 +38,11 @@ def list_providers(
     summary="Create Provider",
     description="Registers a new service provider on the platform. This is the first step for professionals looking to offer their services."
 )
-def create_provider(provider: ProviderCreate, db: Session = Depends(get_db)):
+async def create_provider(
+    provider: ProviderCreate, 
+    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks = BackgroundTasks()
+):
     """Create a new provider."""
     # Check if email exists
     db_provider = db.query(Provider).filter(Provider.email == provider.email).first()
@@ -51,6 +56,11 @@ def create_provider(provider: ProviderCreate, db: Session = Depends(get_db)):
     db.add(new_provider)
     db.commit()
     db.refresh(new_provider)
+
+    # Trigger semantic indexing
+    matcher = MatchingService(db)
+    background_tasks.add_task(matcher.update_provider_embedding, new_provider.id)
+
     return new_provider
 
 @router.get("/{provider_id}", response_model=ProviderResponse)
@@ -62,11 +72,12 @@ def get_provider(provider_id: UUID, db: Session = Depends(get_db)):
     return provider
 
 @router.put("/{provider_id}", response_model=ProviderResponse)
-def update_provider(
+async def update_provider(
     provider_id: UUID, 
     provider_update: ProviderUpdate, 
     db: Session = Depends(get_db),
-    user: Dict[str, Any] = Depends(get_current_user)
+    user: Dict[str, Any] = Depends(get_current_user),
+    background_tasks: BackgroundTasks = BackgroundTasks()
 ):
     """Update a provider's information."""
     provider = db.query(Provider).filter(Provider.id == provider_id).first()
@@ -89,15 +100,21 @@ def update_provider(
         
     db.commit()
     db.refresh(provider)
+    
+    # Update semantic index
+    matcher = MatchingService(db)
+    background_tasks.add_task(matcher.update_provider_embedding, provider.id)
+    
     return provider
 
 # --- Service Endpoints ---
 
 @router.post("/{provider_id}/services", response_model=ServiceResponse, status_code=status.HTTP_201_CREATED)
-def create_provider_service(
+async def create_provider_service(
     provider_id: UUID,
     service: ServiceCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks = BackgroundTasks()
 ):
     """Add a service to a provider."""
     provider = db.query(Provider).filter(Provider.id == provider_id).first()
@@ -111,6 +128,11 @@ def create_provider_service(
     db.add(new_service)
     db.commit()
     db.refresh(new_service)
+    
+    # Update semantic index since offerings changed
+    matcher = MatchingService(db)
+    background_tasks.add_task(matcher.update_provider_embedding, provider_id)
+    
     return new_service
 
 @router.get("/{provider_id}/services", response_model=List[ServiceResponse])

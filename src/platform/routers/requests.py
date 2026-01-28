@@ -26,7 +26,7 @@ router = APIRouter(
     summary="Create Service Request",
     description="Creates a new service request and immediately triggers the provider matching engine. The request will be visible to matched providers."
 )
-def create_request(
+async def create_request(
     request: ServiceRequestCreate, 
     db: Session = Depends(get_db),
     user: Dict[str, Any] = Depends(get_current_user)
@@ -64,7 +64,7 @@ def create_request(
     
     # 2. Trigger Matching
     matcher = MatchingService(db)
-    matched_ids = matcher.find_providers(request)
+    matched_ids = await matcher.find_providers(request)
     
     # 3. Update Request with Matches
     # specific UUID serialization handling might be needed depending on DB driver, 

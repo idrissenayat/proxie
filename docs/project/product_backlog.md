@@ -112,8 +112,8 @@
 
 | ID | Item | Description | Effort | Status |
 |----|------|-------------|--------|--------|
-| P2-001 | Embedding Model | text-embedding-3-large integration | 2d | 🔲 |
-| P2-002 | Semantic Search | pgvector-based provider matching | 3d | 🔲 |
+| P2-001 | Embedding Model | text-embedding-3-large integration | 2d | ✅ |
+| P2-002 | Semantic Search | pgvector-based provider matching | 3d | ✅ |
 | P2-003 | LangGraph Orchestration | Multi-agent conversation routing | 5d | 🔲 |
 | P2-004 | LLM Cost Tracking | Per-session and per-user cost limits | 2d | 🔲 |
 | P2-005 | Additional Specialists | Cleaning, Plumbing, Photography agents | 3d each | 🔲 |

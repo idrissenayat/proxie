@@ -14,7 +14,7 @@ from src.platform.metrics import track_request_created, track_offer_submitted, t
 
 # --- Consumer Handlers ---
 
-def create_service_request(
+async def create_service_request(
     consumer_id: UUID,
     service_category: str,
     service_type: str,
@@ -46,23 +46,7 @@ def create_service_request(
         
         # Trigger Matching
         matcher = MatchingService(db)
-        # Note: Matcher expects Pydantic object usually, but let's check implementation. 
-        # In matching.py, it accessed attributes like .service_type. 
-        # The DB model also has these attributes. It might just work if duck-typed.
-        # But wait, matching.py accessed request_data.location.city (pydantic style)
-        # DB model location is a dict. So Providers.location['city'] vs dict access.
-        # The current matching.py does `request_data.location.city`.
-        # If I pass the DB model, `req.location` is a dict. `req.location.city` will fail.
-        # I should construct a schema object or update matching.py to handle both.
-        # For safety/speed, let's just make a simple object wrapper or modify matching logic slightly?
-        # Re-reading matching.py: it uses `request_data.location.city`.
         
-        # Let's create a temporary object that mimics the structure needed
-        class SimpleObj:
-            def __init__(self, **kwargs):
-                self.__dict__.update(kwargs)
-        
-        # Or better, just import the schema
         from src.platform.schemas.request import ServiceRequestCreate, RequestLocation, RequestRequirements, RequestTiming, RequestBudget
         
         schema = ServiceRequestCreate(
@@ -77,7 +61,7 @@ def create_service_request(
             media=media
         )
         
-        matched_ids = matcher.find_providers(schema)
+        matched_ids = await matcher.find_providers(schema)
         req.matched_providers = [str(uid) for uid in matched_ids]
         
         db.commit()
