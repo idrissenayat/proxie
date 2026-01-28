@@ -362,25 +362,46 @@ class ChatService:
 
     async def handle_chat(
         self, 
-        message: Optional[str],
-        session_id: Optional[str] = None, 
+        message: str, 
+        session_id: Optional[str] = None,
         role: str = "consumer",
-        consumer_id: Optional[UUID] = None,
-        provider_id: Optional[UUID] = None,
-        enrollment_id: Optional[UUID] = None,
-        media: Optional[List[MediaAttachment]] = None,
-        action: Optional[str] = None
-    ) -> Tuple[str, str, Optional[Dict[str, Any]], Optional[DraftRequest], bool]:
+        consumer_id: Optional[str] = None,
+        provider_id: Optional[str] = None,
+        enrollment_id: Optional[str] = None,
+        media: List[ChatMedia] = None,
+        action: Optional[str] = None,
+        clerk_id: Optional[str] = None
+    ) -> Tuple[str, str, Optional[Dict], Optional[DraftRequest], bool]:
         """
-        Handle a chat message and return response.
+        Main entry point for handling a chat message.
+        """
+        # Load or create session
+        session_id, session = self._get_or_create_session(session_id, role, provider_id) # Keep original order for now
         
-        Returns: (session_id, response_text, data, draft, awaiting_approval)
-        """
-        session_id, session = self._get_or_create_session(session_id, role, provider_id)
+        # Hydrate context
         session["context"]["role"] = role
-        if consumer_id:
-            session["context"]["consumer_id"] = str(consumer_id)
-            # Load consumer profile
+        session["context"]["consumer_id"] = consumer_id
+        session["context"]["provider_id"] = provider_id
+        session["context"]["enrollment_id"] = enrollment_id
+        session["context"]["clerk_id"] = clerk_id  # Store clerk_id in context
+        
+        if clerk_id:
+            # Load consumer profile using clerk_id
+            from src.platform.database import SessionLocal
+            from src.platform.models.consumer import Consumer
+            with SessionLocal() as db:
+                consumer = db.query(Consumer).filter(Consumer.clerk_id == clerk_id).first()
+                if consumer:
+                    session["context"]["consumer_profile"] = consumer.to_dict()
+                else:
+                    # Create a default profile if not exists
+                    consumer = Consumer(clerk_id=clerk_id)
+                    db.add(consumer)
+                    db.commit()
+                    db.refresh(consumer)
+                    session["context"]["consumer_profile"] = consumer.to_dict()
+        elif consumer_id:
+            # Fallback to consumer_id if clerk_id not provided
             from src.platform.database import SessionLocal
             from src.platform.models.consumer import Consumer
             with SessionLocal() as db:
@@ -677,8 +698,29 @@ class ChatService:
         """Execute a tool/function and return results."""
         try:
             if name == "create_service_request":
-                consumer_id = context.get("consumer_id") or str(uuid4())
-                context["consumer_id"] = consumer_id
+                # Resolve Internal UUID for database
+                # Prefer UUID from profile (linked via clerk_id earlier in handle_chat)
+                internal_id = None
+                profile = context.get("consumer_profile", {})
+                if profile.get("id"):
+                    internal_id = UUID(str(profile["id"]))
+                else:
+                    # Fallback to provided consumer_id if it's a valid UUID
+                    # (e.g. for guest/unauthenticated sessions if allowed)
+                    cid_raw = context.get("consumer_id")
+                    if cid_raw:
+                        try:
+                            internal_id = UUID(str(cid_raw))
+                        except ValueError:
+                            # Not a UUID, likely a clerk_id that hasn't synced profile yet
+                            pass
+                
+                if not internal_id:
+                     # Create a default UUID if everything else fails
+                     internal_id = uuid.uuid4()
+                
+                # Update context so subsequent tool calls use the same internal identity
+                context["consumer_id"] = str(internal_id)
                 
                 # Build description with extra details
                 description = params.get("description", params.get("service_type", ""))
@@ -690,11 +732,10 @@ class ChatService:
                 # Use consumer profile location if city is missing from tool call
                 city = params.get("city")
                 if not city:
-                    profile = context.get("consumer_profile", {})
                     city = profile.get("default_location", {}).get("city", "Unknown")
                 
                 result = handlers.create_service_request(
-                    consumer_id=UUID(consumer_id),
+                    consumer_id=internal_id,
                     service_category=params.get("service_type", "general"),
                     service_type=params.get("service_type", ""),
                     raw_input=description,
@@ -757,30 +798,45 @@ class ChatService:
                 return {"categories": all_categories}
 
             elif name == "get_consumer_profile":
+                clerk_id = context.get("clerk_id")
                 consumer_id = params.get("consumer_id") or context.get("consumer_id")
-                if not consumer_id:
-                    return {"error": "No consumer ID available"}
                 
                 from src.platform.database import SessionLocal
                 from src.platform.models.consumer import Consumer
                 with SessionLocal() as db:
-                    consumer = db.query(Consumer).filter(Consumer.id == UUID(str(consumer_id))).first()
+                    # Prefer clerk_id lookup for security
+                    if clerk_id:
+                        consumer = db.query(Consumer).filter(Consumer.clerk_id == clerk_id).first()
+                    elif consumer_id:
+                        consumer = db.query(Consumer).filter(Consumer.id == UUID(str(consumer_id))).first()
+                    else:
+                        return {"error": "No identity available"}
+                        
                     if consumer:
                         return consumer.to_dict()
                 return {"error": "Consumer not found"}
 
             elif name == "update_consumer_profile":
+                clerk_id = context.get("clerk_id")
                 consumer_id = params.get("consumer_id") or context.get("consumer_id")
-                if not consumer_id:
-                    return {"error": "No consumer ID available"}
                 
                 from src.platform.database import SessionLocal
                 from src.platform.models.consumer import Consumer
                 with SessionLocal() as db:
-                    consumer = db.query(Consumer).filter(Consumer.id == UUID(str(consumer_id))).first()
+                    # Resolve consumer by clerk_id or internal ID
+                    consumer = None
+                    if clerk_id:
+                        consumer = db.query(Consumer).filter(Consumer.clerk_id == clerk_id).first()
+                    elif consumer_id:
+                        consumer = db.query(Consumer).filter(Consumer.id == UUID(str(consumer_id))).first()
+                    
                     if not consumer:
-                        consumer = Consumer(id=UUID(str(consumer_id)))
-                        db.add(consumer)
+                        # Auto-create profile if authenticated via Clerk
+                        if clerk_id:
+                            consumer = Consumer(clerk_id=clerk_id)
+                            db.add(consumer)
+                        else:
+                            return {"error": "No identity available to create profile"}
                     
                     # Update allowed fields
                     fields = ["name", "email", "phone", "default_location", "preferences"]

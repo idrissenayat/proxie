@@ -12,6 +12,7 @@ from src.platform.schemas.provider import (
     ProfileUpdate
 )
 from src.platform.schemas.service import ServiceCreate, ServiceResponse
+from src.platform.auth import get_current_user
 
 router = APIRouter(
     prefix="/providers",
@@ -58,12 +59,17 @@ def get_provider(provider_id: UUID, db: Session = Depends(get_db)):
 def update_provider(
     provider_id: UUID, 
     provider_update: ProviderUpdate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Update a provider's information."""
     provider = db.query(Provider).filter(Provider.id == provider_id).first()
     if provider is None:
         raise HTTPException(status_code=404, detail="Provider not found")
+        
+    # Security: Ensure user owns this provider record (or is admin)
+    if provider.clerk_id != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to edit this profile")
         
     update_data = provider_update.model_dump(exclude_unset=True)
     
@@ -152,7 +158,8 @@ def get_provider_profile(provider_id: UUID, db: Session = Depends(get_db)):
 def update_provider_profile(
     provider_id: UUID,
     profile_update: ProfileUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
     Update provider's own profile. Provider can edit their profile information.
@@ -160,6 +167,10 @@ def update_provider_profile(
     provider = db.query(Provider).filter(Provider.id == provider_id).first()
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
+    
+    # Security Check
+    if provider.clerk_id != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to edit this profile")
     
     # Update profile fields
     update_data = profile_update.model_dump(exclude_unset=True)

@@ -12,6 +12,8 @@ from slowapi.util import get_remote_address
 from src.platform.schemas.chat import ChatRequest, ChatResponse
 from src.platform.services.chat import chat_service
 from src.platform.config import settings
+from src.platform.auth import get_current_user
+from typing import Dict, Any
 
 router = APIRouter(
     prefix="/chat",
@@ -46,19 +48,24 @@ async def verify_chat_api_key(x_api_key: Optional[str] = Header(None)):
 async def chat(
     request: Request,
     chat_request: ChatRequest,
-    _: bool = Depends(verify_chat_api_key)
+    user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
     Send a message to the Proxie AI Agent.
     
-    Supports:
-    - Text messages
-    - Media attachments (images, videos)
-    - Workflow actions (approve/edit/cancel requests)
-    
-    If CHAT_API_KEY is set in environment, requires X-API-Key header.
-    Rate limited to prevent abuse.
+    Now secured via Clerk JWT. The consumer_id/provider_id in the request 
+    body will be validated against the authenticated user.
     """
+    # Security: Ensure user is only chatting as themselves
+    if chat_request.consumer_id and str(chat_request.consumer_id) != user.get("sub"):
+         # For new users, we might allow session_id to be transient, 
+         # but for logged in users, IDs must match
+         chat_request.consumer_id = user.get("sub")
+    
+    if chat_request.provider_id and str(chat_request.provider_id) != user.get("sub"):
+         # Providers must be authenticated as themselves
+         chat_request.provider_id = user.get("sub")
+
     session_id, response_msg, data, draft, awaiting_approval = await chat_service.handle_chat(
         message=chat_request.message,
         session_id=chat_request.session_id,
@@ -67,7 +74,8 @@ async def chat(
         provider_id=chat_request.provider_id,
         enrollment_id=chat_request.enrollment_id,
         media=chat_request.media,
-        action=chat_request.action
+        action=chat_request.action,
+        clerk_id=user.get("sub")
     )
     
     return ChatResponse(

@@ -12,6 +12,7 @@ from src.platform.models.booking import Booking
 from src.platform.models.provider import Provider
 from src.platform.models.consumer import Consumer
 from src.platform.schemas.consumer import ConsumerRequestsResponse
+from src.platform.auth import get_current_user
 from pydantic import BaseModel, Field
 
 router = APIRouter(
@@ -45,8 +46,16 @@ class ConsumerProfileResponse(BaseModel):
     created_at: Optional[datetime] = None
 
 @router.get("/{consumer_id}/profile", response_model=ConsumerProfileResponse)
-async def get_consumer_profile(consumer_id: UUID, db: Session = Depends(get_db)):
+async def get_consumer_profile(
+    consumer_id: UUID, 
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user)
+):
     """Get consumer profile. Creates a new profile if it doesn't exist."""
+    # Security: Ensure user can only access their own profile (or is admin)
+    if str(consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to access this profile")
+
     consumer = db.query(Consumer).filter(Consumer.id == consumer_id).first()
     
     if not consumer:
@@ -62,9 +71,14 @@ async def get_consumer_profile(consumer_id: UUID, db: Session = Depends(get_db))
 async def update_consumer_profile(
     consumer_id: UUID,
     update: ConsumerProfileUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Update consumer profile. Creates profile if it doesn't exist."""
+    # Security: Ensure user can only update their own profile
+    if str(consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to update this profile")
+
     consumer = db.query(Consumer).filter(Consumer.id == consumer_id).first()
     
     if not consumer:
@@ -86,9 +100,14 @@ async def update_consumer_profile(
 async def update_consumer_location(
     consumer_id: UUID,
     location: Dict[str, Any],
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Quick endpoint to update just the default location."""
+    # Security Check
+    if str(consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to update this profile")
+
     consumer = db.query(Consumer).filter(Consumer.id == consumer_id).first()
     
     if not consumer:
@@ -102,10 +121,18 @@ async def update_consumer_location(
     return {"status": "success", "location": location}
 
 @router.get("/{consumer_id}/requests", response_model=ConsumerRequestsResponse)
-def get_consumer_requests(consumer_id: UUID, db: Session = Depends(get_db)):
+def get_consumer_requests(
+    consumer_id: UUID, 
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user)
+):
     """
     Get all requests and bookings for a consumer, grouped by status.
     """
+    # Security Check
+    if str(consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to access these requests")
+
     # 1. Fetch all requests for consumer
     all_requests = db.query(ServiceRequest).filter(ServiceRequest.consumer_id == consumer_id).all()
     

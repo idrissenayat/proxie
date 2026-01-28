@@ -10,6 +10,7 @@ from src.platform.models.request import ServiceRequest
 from src.platform.models.review import Review
 from src.platform.models.service import Service
 from src.platform.services.matching import MatchingService
+from src.platform.metrics import track_request_created, track_offer_submitted, track_booking_confirmed
 
 # --- Consumer Handlers ---
 
@@ -80,6 +81,9 @@ def create_service_request(
         req.matched_providers = [str(uid) for uid in matched_ids]
         
         db.commit()
+        
+        # Track metric
+        track_request_created(service_category)
         
         return {
             "request_id": str(req.id),
@@ -161,6 +165,9 @@ def accept_offer(offer_id: UUID, selected_slot: Dict[str, Any]) -> Dict[str, Any
         db.add(booking)
         db.commit()
         
+        # Track metric
+        track_booking_confirmed(req.service_category)
+        
         return {
             "booking_id": str(booking.id),
             "status": "confirmed"
@@ -238,6 +245,10 @@ def submit_offer(
             req.status = "offers_received"
             
         db.commit()
+        
+        # Track metric
+        track_offer_submitted(req.service_category)
+        
         return {"offer_id": str(offer.id), "status": "submitted"}
 
 def get_provider(provider_id: UUID) -> Dict[str, Any]:

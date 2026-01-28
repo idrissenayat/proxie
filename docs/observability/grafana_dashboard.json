@@ -1,0 +1,138 @@
+{
+    "annotations": {
+        "list": [
+            {
+                "builtIn": 1,
+                "datasource": "-- Grafana --",
+                "enable": true,
+                "hide": true,
+                "iconColor": "rgba(0, 211, 255, 1)",
+                "name": "Annotations & Alerts",
+                "type": "dashboard"
+            }
+        ]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 1,
+    "id": null,
+    "links": [],
+    "liveNow": false,
+    "panels": [
+        {
+            "title": "API Request Rate (Prometheus)",
+            "type": "timeseries",
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 0
+            },
+            "targets": [
+                {
+                    "expr": "rate(http_request_duration_seconds_count[5m])",
+                    "legendFormat": "{{method}} {{handler}}",
+                    "refId": "A"
+                }
+            ]
+        },
+        {
+            "title": "API Error Rate (5xx)",
+            "type": "timeseries",
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 0
+            },
+            "targets": [
+                {
+                    "expr": "rate(http_request_duration_seconds_count{status=~\"5..\"}[5m])",
+                    "legendFormat": "{{handler}}",
+                    "refId": "A"
+                }
+            ]
+        },
+        {
+            "title": "LLM Token Usage",
+            "type": "timeseries",
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 8
+            },
+            "targets": [
+                {
+                    "expr": "sum by (model, token_type) (rate(proxie_llm_tokens_total[15m]))",
+                    "legendFormat": "{{model}} {{token_type}}",
+                    "refId": "A"
+                }
+            ]
+        },
+        {
+            "title": "LLM Latency (P95)",
+            "type": "timeseries",
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 8
+            },
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum by (le, model) (rate(proxie_llm_latency_seconds_bucket[15m])))",
+                    "legendFormat": "{{model}}",
+                    "refId": "A"
+                }
+            ]
+        },
+        {
+            "title": "Business Funnel",
+            "type": "timeseries",
+            "gridPos": {
+                "h": 8,
+                "w": 24,
+                "x": 0,
+                "y": 16
+            },
+            "targets": [
+                {
+                    "expr": "sum(rate(proxie_requests_created_total[1h]))",
+                    "legendFormat": "Requests Created",
+                    "refId": "A"
+                },
+                {
+                    "expr": "sum(rate(proxie_offers_submitted_total[1h]))",
+                    "legendFormat": "Offers Submitted",
+                    "refId": "B"
+                },
+                {
+                    "expr": "sum(rate(proxie_bookings_confirmed_total[1h]))",
+                    "legendFormat": "Bookings Confirmed",
+                    "refId": "C"
+                }
+            ]
+        }
+    ],
+    "refresh": "1m",
+    "schemaVersion": 36,
+    "style": "dark",
+    "tags": [
+        "proxie",
+        "production"
+    ],
+    "templating": {
+        "list": []
+    },
+    "time": {
+        "from": "now-6h",
+        "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "",
+    "title": "Proxie Master Operations",
+    "uid": "proxie_master",
+    "version": 1,
+    "weekStart": ""
+}

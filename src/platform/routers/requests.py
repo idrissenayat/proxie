@@ -10,6 +10,8 @@ from src.platform.schemas.request import ServiceRequestCreate, ServiceRequestRes
 from src.platform.services.matching import MatchingService
 from src.platform.models.offer import Offer
 from src.platform.schemas.offer import OfferResponse
+from src.platform.auth import get_current_user
+from typing import Dict, Any
 
 router = APIRouter(
     prefix="/requests",
@@ -20,11 +22,16 @@ router = APIRouter(
 @router.post("/", response_model=ServiceRequestResponse, status_code=status.HTTP_201_CREATED)
 def create_request(
     request: ServiceRequestCreate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
     Create a new service request and trigger matching.
     """
+    # Security: Ensure user is creating request for themselves
+    if str(request.consumer_id) != user.get("sub"):
+        request.consumer_id = user.get("sub")
+
     # 1. Create Request Record
     request_data = request.model_dump()
     # Convert Pydantic models to dicts for JSON fields
@@ -178,7 +185,12 @@ def mark_request_viewed(request_id: UUID, provider_id: UUID, db: Session = Depen
 # Sprint 10: Request Details & Management
 
 @router.patch("/{request_id}", response_model=ServiceRequestResponse)
-def update_request(request_id: UUID, updates: dict, db: Session = Depends(get_db)):
+def update_request(
+    request_id: UUID, 
+    updates: dict, 
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user)
+):
     """
     Update a service request. Only allowed for requests in 'matching' status with no offers.
     """
@@ -188,6 +200,10 @@ def update_request(request_id: UUID, updates: dict, db: Session = Depends(get_db
     req = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
+    
+    # Security: Ensure user owns this request
+    if str(req.consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to edit this request")
     
     # Check if editing is allowed
     offer_count = db.query(Offer).filter(Offer.request_id == request_id).count()
@@ -218,7 +234,11 @@ def update_request(request_id: UUID, updates: dict, db: Session = Depends(get_db
     return req
 
 @router.post("/{request_id}/cancel", response_model=ServiceRequestResponse)
-def cancel_request(request_id: UUID, db: Session = Depends(get_db)):
+def cancel_request(
+    request_id: UUID, 
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user)
+):
     """
     Cancel a service request. Only allowed for requests in 'matching' or 'pending' status.
     """
@@ -228,6 +248,10 @@ def cancel_request(request_id: UUID, db: Session = Depends(get_db)):
     req = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
+    
+    # Security: Ensure user owns this request
+    if str(req.consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to cancel this request")
     
     # Check if cancellation is allowed
     if req.status not in ["matching", "pending"]:

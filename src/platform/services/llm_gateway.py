@@ -11,6 +11,8 @@ import litellm
 import structlog
 from typing import List, Dict, Any, Optional
 from src.platform.config import settings
+from src.platform.metrics import track_llm_usage, LLM_LATENCY_SECONDS
+import time
 
 logger = structlog.get_logger()
 
@@ -88,6 +90,7 @@ class LLMGateway:
                 logger.error("Redis read error", error=str(e))
 
         # Attempt Primary Completion
+        start_time = time.time()
         try:
             response = await litellm.acompletion(
                 model=target_model,
@@ -97,6 +100,21 @@ class LLMGateway:
                 temperature=temperature,
                 max_tokens=max_tokens
             )
+            
+            # Record metrics
+            latency = time.time() - start_time
+            LLM_LATENCY_SECONDS.labels(
+                provider=target_model.split('/')[0], 
+                model=target_model.split('/')[-1]
+            ).observe(latency)
+            
+            if hasattr(response, 'usage') and response.usage:
+                track_llm_usage(
+                    provider=target_model.split('/')[0],
+                    model=target_model.split('/')[-1],
+                    prompt_tokens=response.usage.prompt_tokens,
+                    completion_tokens=response.usage.completion_tokens
+                )
             
             # Cache Success
             if use_cache and self.cache_enabled and self.redis_client and cache_key:
@@ -120,6 +138,7 @@ class LLMGateway:
                 
             # Fallback to Secondary
             logger.info("Attempting LLM Fallback", model=self.fallback_model)
+            start_time = time.time()
             try:
                 response = await litellm.acompletion(
                     model=self.fallback_model,
@@ -129,6 +148,22 @@ class LLMGateway:
                     temperature=temperature,
                     max_tokens=max_tokens
                 )
+                
+                # Record metrics
+                latency = time.time() - start_time
+                LLM_LATENCY_SECONDS.labels(
+                    provider=self.fallback_model.split('/')[0], 
+                    model=self.fallback_model.split('/')[-1]
+                ).observe(latency)
+                
+                if hasattr(response, 'usage') and response.usage:
+                    track_llm_usage(
+                        provider=self.fallback_model.split('/')[0],
+                        model=self.fallback_model.split('/')[-1],
+                        prompt_tokens=response.usage.prompt_tokens,
+                        completion_tokens=response.usage.completion_tokens
+                    )
+                    
                 return response
             except Exception as e2:
                 logger.error("LLM Fallback Failed", model=self.fallback_model, error=str(e2))

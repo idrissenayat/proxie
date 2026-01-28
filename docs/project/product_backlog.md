@@ -74,10 +74,10 @@
 
 | ID | Item | Description | Effort | Status |
 |----|------|-------------|--------|--------|
-| P1-001 | Grafana Dashboards | API latency, error rates, request counts | 2d | 🔲 |
-| P1-002 | LLM Cost Dashboard | Track token usage and costs by model | 1d | 🔲 |
-| P1-003 | Business Metrics | Requests created, offers made, bookings | 1d | 🔲 |
-| P1-004 | Log Aggregation | Loki setup for centralized logs | 1d | 🔲 |
+| P1-001 | Grafana Dashboards | API latency, error rates, request counts | 2d | ✅ |
+| P1-002 | LLM Cost Dashboard | Track token usage and costs by model | 1d | ✅ |
+| P1-003 | Business Metrics | Requests created, offers made, bookings | 1d | ✅ |
+| P1-004 | Log Aggregation | Loki setup for centralized logs | 1d | ✅ |
 
 ### Alerting
 
