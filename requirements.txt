@@ -21,6 +21,10 @@ email-validator>=2.1.0
 # LLM
 google-generativeai>=0.5.0
 litellm>=1.35.0
+langgraph>=0.0.10
+langchain>=0.1.0
+langchain-openai>=0.0.2
+langchain-community>=0.0.10
 
 # MCP
 mcp>=0.1.0

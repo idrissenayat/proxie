@@ -20,6 +20,9 @@ from src.platform.services.specialists import specialist_registry
 from src.platform.services.suggestions import suggestion_service
 from src.platform.services.llm_gateway import llm_gateway
 
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
+from src.platform.services.orchestrator import proxie_orchestrator
+
 logger = structlog.get_logger(__name__)
 
 CONSUMER_SYSTEM_PROMPT = """You are the Proxie Consumer Agent, a premium concierge for users looking for high-quality services.
@@ -296,6 +299,52 @@ class ChatService:
     def _is_mock_mode(self) -> bool:
         return not settings.GOOGLE_API_KEY or settings.GOOGLE_API_KEY in ["", "your-gemini-api-key", "your-key-here"]
 
+    def _to_lc_msgs(self, messages: List[Dict]) -> List[BaseMessage]:
+        """Convert Proxie/Gemini dict messages to LangChain messages."""
+        lc_msgs = []
+        for m in messages:
+            role = m.get("role")
+            content = m.get("content")
+            if role == "user":
+                lc_msgs.append(HumanMessage(content=content))
+            elif role == "assistant":
+                # Handle tool calls
+                kwargs = {}
+                if "tool_calls" in m:
+                    kwargs["tool_calls"] = m["tool_calls"]
+                lc_msgs.append(AIMessage(content=content or "", additional_kwargs=kwargs))
+            elif role == "tool":
+                lc_msgs.append(ToolMessage(
+                    tool_call_id=m.get("tool_call_id"),
+                    name=m.get("name"),
+                    content=str(m.get("content"))
+                ))
+            elif role == "system":
+                lc_msgs.append(SystemMessage(content=content))
+        return lc_msgs
+
+    def _from_lc_msgs(self, lc_msgs: List[BaseMessage]) -> List[Dict]:
+        """Convert LangChain messages back to Proxie/Gemini dicts."""
+        messages = []
+        for m in lc_msgs:
+            if isinstance(m, HumanMessage):
+                messages.append({"role": "user", "content": m.content})
+            elif isinstance(m, AIMessage):
+                msg_dict = {"role": "assistant", "content": m.content}
+                if "tool_calls" in m.additional_kwargs:
+                    msg_dict["tool_calls"] = m.additional_kwargs["tool_calls"]
+                messages.append(msg_dict)
+            elif isinstance(m, ToolMessage):
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": m.tool_call_id,
+                    "name": m.name,
+                    "content": m.content
+                })
+            elif isinstance(m, SystemMessage):
+                messages.append({"role": "system", "content": m.content})
+        return messages
+
     def _get_model_params(self, role: str, provider_id: Optional[UUID] = None) -> Tuple[str, List[Dict]]:
         """Get specialized model parameters based on role."""
         prompt = CONSUMER_SYSTEM_PROMPT
@@ -518,49 +567,34 @@ class ChatService:
             # Add to session messages
             session["messages"].append({"role": "user", "content": content_list})
             
-            response_text = ""
+            # Prepare Context for Orchestrator
+            session["context"]["tools"] = session["tools"]
+            session["context"]["tool_executor"] = lambda name, args: self._execute_tool(name, args, session["context"])
+            
+            # Convert existing history to LangChain
+            lc_messages = self._to_lc_msgs(session["messages"])
+            
+            # Run Orchestrator (LangGraph)
+            response_text, final_lc_msgs, final_context = await proxie_orchestrator.run(
+                messages=lc_messages,
+                context=session["context"],
+                user_id=clerk_id,
+                session_id=session_id,
+                role=role
+            )
+            
+            # Sync back context and history
+            session["context"] = final_context
+            session["messages"] = self._from_lc_msgs(final_lc_msgs)
+            
+            # Structured data and UI hints (legacy support)
+            # Find any tool results in history to pull structured data
             structured_data = None
+            for m in reversed(session["messages"]):
+                if m["role"] == "tool":
+                    structured_data = self._capture_structured_data(m["name"], json.loads(m["content"]), structured_data)
             
-            # Process with LLM (allowing for tool calls)
-            for _ in range(5):  # Max 5 internal turns
-                response = await llm_gateway.chat_completion(
-                    messages=session["messages"],
-                    tools=session["tools"],
-                    user_id=clerk_id,
-                    session_id=session_id,
-                    feature=f"chat_{role}"
-                )
-                
-                ai_message = response.choices[0].message
-                # Store message for history
-                session["messages"].append(ai_message.to_dict())
-                
-                if ai_message.content:
-                    response_text += ai_message.content
-                
-                if not ai_message.tool_calls:
-                    break
-                
-                # Process tool calls
-                for tool_call in ai_message.tool_calls:
-                    function_name = tool_call.function.name
-                    function_args = json.loads(tool_call.function.arguments)
-                    
-                    logger.info(f"Executing tool: {function_name}", args=function_args)
-                    result = self._execute_tool(function_name, function_args, session["context"])
-                    
-                    # Capture structured data
-                    structured_data = self._capture_structured_data(function_name, result, structured_data)
-                    
-                    # Add tool response to history
-                    session["messages"].append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "name": function_name,
-                        "content": json.dumps(result)
-                    })
-            
-            # Consult Specialist if relevant
+            # Consult Specialist if relevant (SpecialistAgent logic)
             await self._consult_specialist(session["context"], message, response_text, stored_media)
             
             # Check if response indicates a draft
