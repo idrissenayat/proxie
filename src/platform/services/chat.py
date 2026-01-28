@@ -22,15 +22,26 @@ from src.platform.services.llm_gateway import llm_gateway
 
 logger = structlog.get_logger(__name__)
 
-CONSUMER_SYSTEM_PROMPT = """You are the Proxie Consumer Agent, a helpful concierge for users looking for services.
-Your goal: Help users gather all necessary info (location, budget, timing) and share media to create a perfect service request.
+CONSUMER_SYSTEM_PROMPT = """You are the Proxie Consumer Agent, a premium concierge for users looking for high-quality services.
 
-Context: You have access to {consumer_profile}. Use this info to avoid asking questions about things you already know (like their default location or name).
+Your goal: Orchestrate a seamless, high-end experience that feels like chatting with a personal assistant.
 
-Account Creation Flow:
+Account Creation & Personalization:
 - If 'consumer_id' is present but 'name' or 'default_location' are missing, your first priority is to gather this info naturally.
-- After updating their profile using 'update_consumer_profile', proactively suggest they "Connect their account" so their preferences are saved for future requests.
-- When you update the profile, the UI will show them a 'Connect Now' button. You should mention this.
+- ALWAYS use the user's name if available in {consumer_profile}.
+- If you just updated their profile, proactively suggest they "Secure their profile" to keep their preferences safe.
+
+Rich Interaction Rules:
+- Proactive Assistance: Don't just answer; guide. For example, "I've analyzed your photo! It looks like you're looking for a fade. Would you like me to find stylists who specialize in that?"
+- Rich UI Elements: You can use special tags to trigger frontend widgets:
+  - Mentioning "I'm showing you the service catalog" will trigger the visual selector.
+  - Mentioning "Let's pick a time" will trigger the calendar picker.
+  - Use [button: Text | action] for quick shortcuts, e.g., [button: Approve Draft | approve_request].
+
+Conversational Style:
+- Professional yet warm. Use emojis sparingly for personality.
+- Be concise. One step at a time.
+- If the user shares a photo, acknowledge what you see in it immediately.
 
 Capabilities:
 - Analyze photos to identify hair types or service needs.
@@ -423,6 +434,15 @@ class ChatService:
         # Handle workflow actions
         if action:
             return await self._handle_action(session_id, session, action)
+            
+        # Smart Greeting: If brand new session and we have a name, say hi!
+        # Detect if it's the first real message in the session
+        is_first_message = len(session.get("messages", [])) <= 1 # System prompt + maybe one message
+        if is_first_message and not message and not media:
+            profile = session["context"].get("consumer_profile", {})
+            name = profile.get("name")
+            if name:
+                return session_id, f"Welcome back, {name.split()[0]}! 👋 How can I help you today?", None, None, False
         
         # Store and process media if provided
         stored_media = []
@@ -505,7 +525,10 @@ class ChatService:
             for _ in range(5):  # Max 5 internal turns
                 response = await llm_gateway.chat_completion(
                     messages=session["messages"],
-                    tools=session["tools"]
+                    tools=session["tools"],
+                    user_id=clerk_id,
+                    session_id=session_id,
+                    feature=f"chat_{role}"
                 )
                 
                 ai_message = response.choices[0].message
@@ -547,6 +570,9 @@ class ChatService:
             if draft:
                 session["context"]["draft"] = draft.dict() if hasattr(draft, 'dict') else draft
                 session["context"]["awaiting_approval"] = True
+            
+            # Parse UI hints and buttons from final response
+            structured_data = self._parse_ui_elements(response_text, structured_data)
             
             # Save session to Redis
             session_manager.save_session(session_id, session)
@@ -1015,31 +1041,65 @@ class ChatService:
         
         if function_name == "get_offers":
             data["offers"] = result.get("offers", [])
+            data["ui_hint"] = "compare_offers"
         elif function_name == "get_consumer_profile" or function_name == "update_consumer_profile":
             data["consumer_profile"] = result
         elif function_name == "create_service_request":
             data["request_id"] = result.get("request_id")
+            data["ui_hint"] = "request_created"
         elif function_name == "accept_offer" and "booking_id" in result:
             data["booking"] = result
+            data["ui_hint"] = "booking_confirmed"
         elif function_name == "get_matching_requests" or function_name == "get_my_leads":
             data["requests"] = result if isinstance(result, list) else result.get("requests", [])
+            data["ui_hint"] = "show_leads"
         elif function_name == "get_lead_details":
             data["lead"] = result
         elif function_name == "suggest_offer":
             data["suggestion"] = result
+            data["ui_hint"] = "offer_helper"
         elif function_name == "get_service_catalog":
             data["categories"] = result.get("categories", [])
+            data["ui_hint"] = "service_selector"
         elif function_name == "update_enrollment":
-            # We don't necessarily need to return data to FE here, 
-            # unless we want to show a 'saved' indicator.
             data["enrollment_updated"] = True
         elif function_name == "get_enrollment_summary":
             data["enrollment_summary"] = result
+            data["ui_hint"] = "enrollment_summary"
         elif function_name == "request_portfolio":
             data["show_portfolio"] = True
+            data["ui_hint"] = "portfolio_uploader"
         elif function_name == "submit_enrollment":
             data["enrollment_result"] = result
+            data["ui_hint"] = "enrollment_complete"
         
+        return data if data else None
+
+    def _parse_ui_elements(self, text: str, data: Optional[Dict]) -> Optional[Dict]:
+        """Parse text for UI hints and buttons."""
+        if not data:
+            data = {}
+            
+        # 1. Detect Keyword Hints
+        lower_text = text.lower()
+        if "service catalog" in lower_text or "categories" in lower_text:
+            data["ui_hint"] = "service_selector"
+        elif "pick a time" in lower_text or "calendar" in lower_text:
+            data["ui_hint"] = "calendar_picker"
+        elif "location" in lower_text and "?" in lower_text:
+             data["ui_hint"] = "location_picker"
+             
+        # 2. Parse Buttons [button: Text | action]
+        import re
+        buttons = []
+        pattern = r"\[button: (.*?) \| (.*?)\]"
+        matches = re.findall(pattern, text)
+        for label, action in matches:
+            buttons.append({"label": label.strip(), "action": action.strip()})
+            
+        if buttons:
+            data["buttons"] = buttons
+            
         return data if data else None
 
     def _mock_response(

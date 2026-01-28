@@ -31,6 +31,7 @@ from src.platform.models.offer import Offer
 from src.platform.models.booking import Booking
 from src.platform.models.review import Review
 from src.platform.models.consumer import Consumer
+from src.platform.models.usage import LLMUsage
 
 # Setup Logging
 setup_logging()

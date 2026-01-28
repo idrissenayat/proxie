@@ -51,6 +51,17 @@ class Settings(BaseSettings):
     LLM_CACHE_ENABLED: bool = True
     LLM_CACHE_TTL: int = 3600
     
+    # LLM Pricing (USD per 1M tokens)
+    LLM_GEMINI_2_0_FLASH_INPUT_COST: float = 0.10
+    LLM_GEMINI_2_0_FLASH_OUTPUT_COST: float = 0.40
+    LLM_CLAUDE_3_5_SONNET_INPUT_COST: float = 3.00
+    LLM_CLAUDE_3_5_SONNET_OUTPUT_COST: float = 15.00
+    LLM_EMBEDDING_3_LARGE_COST: float = 0.13
+    
+    # Budget Limits (USD)
+    LLM_DAILY_LIMIT_PER_USER: float = 2.00
+    LLM_SESSION_LIMIT: float = 0.50
+    
     # Worker
     CELERY_TASK_ALWAYS_EAGER: bool = False
     
@@ -72,6 +83,10 @@ class Settings(BaseSettings):
     CLERK_SECRET_KEY: str = ""
     CLERK_PUBLISHABLE_KEY: str = ""
     LOAD_TEST_SECRET: str = "proxie_load_test_key_2026"
+    
+    # AI - OpenAI (for embeddings)
+    OPENAI_API_KEY: str = ""
+    LLM_EMBEDDING_MODEL: str = "openai/text-embedding-3-large"
     
     # CORS - Configurable origins
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"  # Comma-separated
@@ -107,7 +122,10 @@ class Settings(BaseSettings):
             "CLERK_PUBLISHABLE_KEY",
             "DATABASE_URL",
             "SENTRY_DSN",
-            "REDIS_URL"
+            "REDIS_URL",
+            "OPENAI_API_KEY",
+            "LLM_DAILY_LIMIT_PER_USER",
+            "LLM_SESSION_LIMIT"
         ]
         
         for key in secret_keys:

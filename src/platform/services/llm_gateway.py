@@ -12,6 +12,8 @@ import structlog
 from typing import List, Dict, Any, Optional
 from src.platform.config import settings
 from src.platform.metrics import track_llm_usage, LLM_LATENCY_SECONDS
+from src.platform.services.usage import LLMUsageService
+from src.platform.database import SessionLocal
 import time
 
 logger = structlog.get_logger()
@@ -54,12 +56,22 @@ class LLMGateway:
         tool_choice: str = "auto",
         temperature: float = 0.7,
         max_tokens: int = 1500,
-        use_cache: bool = True
+        use_cache: bool = True,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        feature: str = "general"
     ) -> Any:
         """Execute a chat completion with caching and fallback."""
         target_model = model or self.primary_model
         
-        # Try Cache
+        # 0. Budget Check
+        with SessionLocal() as db:
+            usage_service = LLMUsageService(db)
+            if usage_service.is_over_budget(user_id, session_id):
+                logger.error("LLM Budget Exceeded - Blocking Request", user_id=user_id, session_id=session_id)
+                raise Exception("LLM usage limit exceeded for this session/day.")
+
+        # 1. Try Cache
         cache_key = None
         if use_cache and self.cache_enabled and self.redis_client:
             cache_key = self._get_cache_key(target_model, messages, tools)
@@ -89,7 +101,7 @@ class LLMGateway:
             except Exception as e:
                 logger.error("Redis read error", error=str(e))
 
-        # Attempt Primary Completion
+        # 2. Attempt Primary Completion
         start_time = time.time()
         try:
             response = await litellm.acompletion(
@@ -101,20 +113,32 @@ class LLMGateway:
                 max_tokens=max_tokens
             )
             
-            # Record metrics
+            # Record metrics & DB usage
             latency = time.time() - start_time
-            LLM_LATENCY_SECONDS.labels(
-                provider=target_model.split('/')[0], 
-                model=target_model.split('/')[-1]
-            ).observe(latency)
+            provider = target_model.split('/')[0]
+            model_name = target_model.split('/')[-1]
+            
+            LLM_LATENCY_SECONDS.labels(provider=provider, model=model_name).observe(latency)
             
             if hasattr(response, 'usage') and response.usage:
+                # Prometheus
                 track_llm_usage(
-                    provider=target_model.split('/')[0],
-                    model=target_model.split('/')[-1],
+                    provider=provider,
+                    model=model_name,
                     prompt_tokens=response.usage.prompt_tokens,
                     completion_tokens=response.usage.completion_tokens
                 )
+                # Database (Cost Tracking)
+                with SessionLocal() as db:
+                    LLMUsageService(db).record_usage(
+                        provider=provider,
+                        model=model_name,
+                        prompt_tokens=response.usage.prompt_tokens,
+                        completion_tokens=response.usage.completion_tokens,
+                        user_id=user_id,
+                        session_id=session_id,
+                        feature=feature
+                    )
             
             # Cache Success
             if use_cache and self.cache_enabled and self.redis_client and cache_key:
@@ -157,12 +181,24 @@ class LLMGateway:
                 ).observe(latency)
                 
                 if hasattr(response, 'usage') and response.usage:
+                    # Prometheus
                     track_llm_usage(
                         provider=self.fallback_model.split('/')[0],
                         model=self.fallback_model.split('/')[-1],
                         prompt_tokens=response.usage.prompt_tokens,
                         completion_tokens=response.usage.completion_tokens
                     )
+                    # Database
+                    with SessionLocal() as db:
+                        LLMUsageService(db).record_usage(
+                            provider=self.fallback_model.split('/')[0],
+                            model=self.fallback_model.split('/')[-1],
+                            prompt_tokens=response.usage.prompt_tokens,
+                            completion_tokens=response.usage.completion_tokens,
+                            user_id=user_id,
+                            session_id=session_id,
+                            feature=feature
+                        )
                     
                 return response
             except Exception as e2:
