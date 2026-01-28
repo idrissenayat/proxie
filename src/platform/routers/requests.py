@@ -19,7 +19,13 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-@router.post("/", response_model=ServiceRequestResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/", 
+    response_model=ServiceRequestResponse, 
+    status_code=status.HTTP_201_CREATED,
+    summary="Create Service Request",
+    description="Creates a new service request and immediately triggers the provider matching engine. The request will be visible to matched providers."
+)
 def create_request(
     request: ServiceRequestCreate, 
     db: Session = Depends(get_db),

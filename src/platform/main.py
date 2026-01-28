@@ -60,8 +60,26 @@ limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="Proxie API",
-    description="Agent-native platform for skilled service providers",
+    description="""
+Agent-native platform for skilled service providers.
+
+## Features
+* **AI-First Concierge**: Conversational request creation.
+* **Smart Matching**: Automated provider discovery.
+* **Real-time Communication**: WebSocket-based chat.
+* **Secure Payments**: (Upcoming) Integrated booking and payouts.
+""",
     version="0.12.0",
+    terms_of_service="https://proxie.app/terms/",
+    contact={
+        "name": "Proxie Support",
+        "url": "https://proxie.app/support",
+        "email": "support@proxie.app",
+    },
+    license_info={
+        "name": "Proprietary",
+        "url": "https://proxie.app/license",
+    },
 )
 
 # Add rate limiter to app state

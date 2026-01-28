@@ -30,7 +30,13 @@ def list_providers(
     providers = db.query(Provider).offset(skip).limit(limit).all()
     return providers
 
-@router.post("/", response_model=ProviderResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/", 
+    response_model=ProviderResponse, 
+    status_code=status.HTTP_201_CREATED,
+    summary="Create Provider",
+    description="Registers a new service provider on the platform. This is the first step for professionals looking to offer their services."
+)
 def create_provider(provider: ProviderCreate, db: Session = Depends(get_db)):
     """Create a new provider."""
     # Check if email exists
