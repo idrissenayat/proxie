@@ -101,6 +101,102 @@ class LLMGateway:
             except Exception as e:
                 logger.error("Redis read error", error=str(e))
 
+        # 1.5 Mock Mode Check
+        is_mock = not settings.GOOGLE_API_KEY or settings.GOOGLE_API_KEY in ["", "your-gemini-api-key", "your-key-here"]
+        if is_mock:
+            logger.info("LLM Mock Mode Enabled", model=target_model)
+            from litellm.utils import ModelResponse
+            import json
+            
+            # Check if we just finished a tool call
+            last_msg = messages[-1] if messages else {}
+            if last_msg.get("role") == "tool":
+                tool_name = last_msg.get("name")
+                response_text = "I've processed that for you."
+                
+                if tool_name == "get_my_leads" or tool_name == "get_matching_requests":
+                    response_text = "Here are your current leads."
+                elif tool_name == "create_service_request":
+                    response_text = "Your request has been created! ✅"
+                elif tool_name == "get_service_catalog":
+                    response_text = "Please select the services you offer."
+                
+                # Tool execution complete, return a summary
+                mock_response = {
+                    "choices": [{
+                        "message": {
+                            "role": "assistant",
+                            "content": response_text
+                        },
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20}
+                }
+                import asyncio
+                await asyncio.sleep(0.5)
+                return ModelResponse(**mock_response)
+
+            content = "I understand you need help. Here is a simulated response from Proxie AI (Mock Mode)."
+            tool_calls = []
+            
+            request_text = str(messages).lower()
+            
+            # Mock "Create Request" flow
+            # Avoid triggering if we already have a tool call or response in history to avoid loops
+            # But simpler for now: just strictly check input content
+            
+            # Mock "Create Request" flow
+            # We want to simulate a Draft first, so NO tool call here.
+            # We return text that triggers _detect_draft_in_response
+            if ("brooklyn" in request_text or "apartment" in request_text) and "create_request" not in request_text:
+                content = "I've drafted a cleaning request for your Brooklyn apartment. Here is your request summary. Ready to post?"
+                # No tool calls - let the orchestrator/chat service handle draft creation from text/context
+                tool_calls = []
+            
+            # Mock "Service Catalog" flow
+            elif "services" in request_text and "name is alex" in request_text:
+                content = "Great to meet you, Alex! To get started as a professional cleaner, please select the services you offer from our catalog."
+                tool_calls = [{
+                    "id": "call_mock_2",
+                    "type": "function",
+                    "function": {
+                        "name": "get_service_catalog",
+                        "arguments": "{}"
+                    }
+                }]
+            
+            # Mock "Leads" flow
+            elif "leads" in request_text and "show me" in request_text:
+                content = "Here are your current leads:"
+                tool_calls = [{
+                    "id": "call_mock_3",
+                    "type": "function",
+                    "function": {
+                        "name": "get_my_leads",
+                        "arguments": "{}"
+                    }
+                }]
+
+            mock_response = {
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "content": content,
+                        "tool_calls": tool_calls if tool_calls else None
+                    },
+                    "finish_reason": "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 10,
+                    "total_tokens": 20
+                }
+            }
+            # Simulate a small delay
+            import asyncio
+            await asyncio.sleep(0.5)
+            return ModelResponse(**mock_response)
+
         # 2. Attempt Primary Completion
         start_time = time.time()
         try:

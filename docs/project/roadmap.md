@@ -77,6 +77,7 @@
 - [x] Add LLM response caching to reduce latency/cost
 
 ### Weeks 13-14: Frontend Modernization & Infrastructure
+- [x] **Sprint 11: Stability, E2E Testing & Mocking Infrastructure**
 - [x] Migrate from Vite to **Next.js 14** (App Router)
 - [x] Integrate **Clerk Authentication** (Premium UI)
 - [x] Prepare **Kubernetes (GKE)** manifests with autopilot
@@ -121,6 +122,7 @@
 | Provider Enrollment System | Week 11 | ✅ |
 | Request Details & Provider Profiles | Week 11 | ✅ |
 | Architecture 2.0 Infrastructure | Week 12 | ✅ |
+| E2E Testing & System Stability | Week 12 | ✅ |
 | Legacy Mobile App (Expo) | Week 10 | 💤 |
 | First real booking | Week 13 | ⬜ |
 | Pilot complete | Week 14 | ⬜ |

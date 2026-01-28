@@ -40,6 +40,15 @@
 | DONE-015 | Clerk Authentication (Frontend) | Frontend | 2026-01-27 |
 | DONE-016 | Agent-Native Profile Sync | AI Layer | 2026-01-27 |
 
+### Sprint 11 Completions
+
+| ID | Item | Category | Completed |
+|----|------|----------|-----------|
+| DONE-017 | Advanced LLM Mocking | Testing | 2026-01-28 |
+| DONE-018 | Orchestrator Stabilization | AI Layer | 2026-01-28 |
+| DONE-019 | E2E Stability Fixes | Testing | 2026-01-28 |
+| DONE-020 | Secret Manager Refactor | Security | 2026-01-28 |
+
 ---
 
 ## 🔴 Critical Priority (P0)
@@ -53,7 +62,7 @@
 | P0-001 | Clerk Authentication | Replace mock auth with Clerk SDK | 3d | ✅ |
 | P0-002 | JWT Middleware | Backend JWT verification for all protected routes | 1d | 🔲 |
 | P0-003 | Role-Based Access | Consumer vs Provider vs Admin permissions | 2d | 🔲 |
-| P0-004 | API Key Secrets | Move all API keys to secure secret management | 0.5d | 🔲 |
+| P0-004 | API Key Secrets | Move all API keys to secure secret management (Vault) | 0.5d | ✅ |
 
 ### Deployment & CI/CD
 

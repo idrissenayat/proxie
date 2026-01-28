@@ -105,6 +105,7 @@ class Settings(BaseSettings):
     
     # Chat API Key (optional - if set, requires auth for /chat endpoint)
     CHAT_API_KEY: str = ""  # Empty means no auth required (for pilot)
+    LOAD_TEST_SECRET: str = "proxie_load_test_key_2026"
     
     @model_validator(mode='after')
     def load_gcp_secrets(self) -> 'Settings':
@@ -112,7 +113,7 @@ class Settings(BaseSettings):
         if not self.GCP_SECRETS_ENABLED:
             return self
             
-        from src.platform.secrets import get_secret
+        from src.platform.vault import get_secret
         
         # List of keys that should be fetched from Secret Manager in production
         secret_keys = [

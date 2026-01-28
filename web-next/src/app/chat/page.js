@@ -39,7 +39,9 @@ function ChatContent() {
             role: 'assistant',
             content: role === 'consumer'
                 ? "Hi! I'm Proxie, your personal agent for finding skilled service providers. What can I help you with today?"
-                : "Hi! I'm Proxie. I'm ready to help you manage your business. Would you like to see your new leads or manage active offers?"
+                : role === 'enrollment'
+                    ? "Hi! I'm Proxie. I'm ready to help you enroll as a provider. Let's start by getting to know you and your business!"
+                    : "Hi! I'm Proxie. I'm ready to help you manage your business. Would you like to see your new leads or manage active offers?"
         }
     ]);
     const [input, setInput] = useState('');

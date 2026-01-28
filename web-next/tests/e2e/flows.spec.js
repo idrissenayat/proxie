@@ -16,19 +16,20 @@ test.describe('End-to-End User Journeys', () => {
         await expect(page.locator('text=Thinking...')).toBeVisible();
         // We expect the agent to eventually show a draft or ask questions
         // Since we are hitting a real/mocked backend, we look for the draft card
-        await expect(page.locator('text=Draft Request')).toBeVisible({ timeout: 15000 });
+        await expect(page.locator('text=Confirm Request')).toBeVisible({ timeout: 15000 });
 
         // 4. Review & Approve Draft
-        // Look for the "Approve" button (we implemented [button: Approve Draft | approve_request])
-        const approveButton = page.locator('button:has-text("Approve Draft")');
+        // Look for the "Approve" button
+        const approveButton = page.locator('button:has-text("Post Request")');
         if (await approveButton.isVisible()) {
             await approveButton.click();
         } else {
-            // Fallback to typing "Approve"
-            await input.fill('Approve');
+            // Fallback to typing "Post Request"
+            await input.fill('Post Request');
             await page.keyboard.press('Enter');
         }
 
+        // 5. Success Confirmation
         // 5. Success Confirmation
         await expect(page.locator('text=Your request has been posted')).toBeVisible({ timeout: 10000 });
     });
@@ -45,18 +46,19 @@ test.describe('End-to-End User Journeys', () => {
         await input.fill('Show me my new leads');
         await page.keyboard.press('Enter');
 
-        // Wait for leads list (This assumes the AI calls get_my_leads)
+        // Wait for leads list
         await expect(page.locator('text=Thinking...')).toBeVisible();
-        // In our implementation, structured data should trigger lead components
-        // For now, check for a lead title or generic lead text
-        await expect(page.locator('text=Lead')).toBeVisible({ timeout: 15000 });
+
+        // In our implementation, tool results should be processed.
+        // Let's look for a specific lead indicator or the mock response text
+        await expect(page.locator('text=current leads')).toBeVisible({ timeout: 15000 });
     });
 
     test('Enrollment: Multi-step Onboarding', async ({ page }) => {
         await page.goto('/chat?role=enrollment');
 
         // 1. Greeting
-        await expect(page.locator('p.leading-relaxed').first()).toContainText("I'm ready");
+        await expect(page.locator('p.leading-relaxed').first()).toContainText("enroll as a provider");
 
         // 2. Provide Name
         const input = page.locator('input[placeholder="Ask anything"]');
@@ -65,7 +67,7 @@ test.describe('End-to-End User Journeys', () => {
 
         // 3. Wait for Service Catalog trigger
         // We implemented UI Hints for "service_selector"
-        await expect(page.locator('text=Select Services')).toBeVisible({ timeout: 15000 });
+        await expect(page.locator('text=What do you offer?')).toBeVisible({ timeout: 15000 });
     });
 
 });

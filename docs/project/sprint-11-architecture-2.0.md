@@ -1,4 +1,4 @@
-# Sprint 11 Summary: Authentication & Multi-Modal Foundation
+# Sprint 11 Summary: Authentication, Testing & Stability
 **Date**: 2026-01-27
 **Status**: Completed ✅
 
@@ -38,3 +38,28 @@ Implement production-ready authentication using Clerk and integrate agent-native
 1. **Backend JWT Verification**: Implement `clerk-sdk-python` middleware in FastAPI to secure API endpoints.
 2. **Role-Based Access**: Restrict "Get Leads" view to verified Providers only.
 3. **Async LLM Workers**: Move agent turns to background tasks using Celery for better UI responsiveness.
+
+---
+
+## 🛡️ Part 2: Stability & Testing (Jan 28 Update)
+
+**Focus**: Hardening the platform for production reliability.
+
+### 4. Robust End-to-End Testing
+- **Goal**: Achieve 100% pass rate for critical user flows.
+- **Outcome**: All 3 core flows (Consumer Request, Provider Lead Management, Enrollment) require zero manual intervention.
+- **Fixes**: Aligned Playwright selectors, fixed timing issues, and updated expectation logic.
+
+### 5. Advanced LLM Mocking
+- **Feature**: `LLMGateway` mock mode now simulates **Draft Generation** and **Tool Calls**.
+- **Impact**: Enables full offline testing of the Orchestrator loop without hitting Gemini APIs.
+- **Mechanism**: Detects mocked text responses (e.g., "Here are your leads") and triggers the appropriate tool output logic in the tests.
+
+### 6. Orchestrator Stability
+- **Bug Fix**: Fixed a critical crash in the Router Node when processing list-based (multi-modal) message content.
+- **Improvement**: Added robust handling for async tool execution within the `chat_service` context.
+- **Security**: Prevented non-serializable objects (like tool executors) from being passed to Redis, resolving session save errors.
+
+### 7. Infrastructure Refinements
+- **Secrets**: Renamed `secrets.py` to `vault.py` for clarity and improved error handling.
+- **Database**: Validated and patched `clerk_id` schema migration for Consumer and Provider tables.

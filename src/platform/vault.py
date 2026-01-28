@@ -7,8 +7,6 @@ falling back to environment variables in development.
 import os
 import structlog
 from typing import Optional
-from google.cloud import secretmanager
-from google.api_core import exceptions
 
 logger = structlog.get_logger(__name__)
 
@@ -21,8 +19,9 @@ class SecretManager:
         
         if self.project_id:
             try:
+                from google.cloud import secretmanager
                 self.client = secretmanager.SecretManagerServiceClient()
-            except Exception as e:
+            except (ImportError, Exception) as e:
                 logger.warning("secret_manager_init_failed", error=str(e), note="Falling back to ENV variables")
 
     def get_secret(self, secret_id: str, default: Optional[str] = None) -> Optional[str]:
@@ -33,13 +32,13 @@ class SecretManager:
         # Try GCP Secret Manager first
         if self.client and self.project_id:
             try:
+                from google.api_core import exceptions
                 name = f"projects/{self.project_id}/secrets/{secret_id}/versions/latest"
                 response = self.client.access_secret_version(request={"name": name})
                 return response.payload.data.decode("UTF-8")
-            except exceptions.NotFound:
-                logger.debug("secret_not_found_in_gcp", secret_id=secret_id)
             except Exception as e:
-                logger.warning("secret_manager_access_failed", secret_id=secret_id, error=str(e))
+                # We catch all here to be safe
+                logger.debug("secret_manager_access_failed", secret_id=secret_id, error=str(e))
 
         # Fallback to standard environment variables
         return os.getenv(secret_id, default)

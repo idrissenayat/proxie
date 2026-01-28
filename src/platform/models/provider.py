@@ -4,6 +4,7 @@ from sqlalchemy import Column, String, Boolean, Float, Integer, DateTime, Text
 from sqlalchemy.dialects.postgresql import UUID, JSON
 from sqlalchemy.sql import func
 import uuid
+from pgvector.sqlalchemy import Vector
 
 from src.platform.database import Base
 
@@ -16,6 +17,10 @@ class Provider(Base):
     clerk_id = Column(String(255), unique=True, index=True, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # AI Search
+    # Using 3072 dimensions for text-embedding-3-large
+    embedding = Column(Vector(3072), nullable=True)
     
     # Identity
     name = Column(String(255), nullable=False)

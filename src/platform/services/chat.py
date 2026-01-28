@@ -428,7 +428,7 @@ class ChatService:
         consumer_id: Optional[str] = None,
         provider_id: Optional[str] = None,
         enrollment_id: Optional[str] = None,
-        media: List[ChatMedia] = None,
+        media: List[MediaAttachment] = None,
         action: Optional[str] = None,
         clerk_id: Optional[str] = None
     ) -> Tuple[str, str, Optional[Dict], Optional[DraftRequest], bool]:
@@ -510,9 +510,11 @@ class ChatService:
             except Exception as e:
                 logger.error(f"Failed to trigger background analysis: {e}")
         
-        if self.is_mock:
-            response_text, data = self._mock_response(message, role, session["context"], stored_media)
-            return session_id, response_text, data, session["context"].get("draft"), session["context"].get("awaiting_approval", False)
+        # LOGIC CHANGE: We now use llm_gateway mock mode within the orchestrator.
+        # So we disable this legacy bypass.
+        # if self.is_mock:
+        #     response_text, data = self._mock_response(message, role, session["context"], stored_media)
+        #     return session_id, response_text, data, session["context"].get("draft"), session["context"].get("awaiting_approval", False)
         
         try:
             # Build user message content
@@ -608,6 +610,10 @@ class ChatService:
             # Parse UI hints and buttons from final response
             structured_data = self._parse_ui_elements(response_text, structured_data)
             
+            # Cleanup non-serializable items
+            if "tool_executor" in session["context"]:
+                del session["context"]["tool_executor"]
+
             # Save session to Redis
             session_manager.save_session(session_id, session)
             
@@ -631,18 +637,38 @@ class ChatService:
             if not draft:
                 return session_id, "There's no draft request to approve. Let me help you create one!", None, None, False
             
+            # Helper to access draft attributes safely whether it's an object or dict
+            def get_attr(obj, key, default=None):
+                if isinstance(obj, dict):
+                    return obj.get(key, default)
+                return getattr(obj, key, default)
+
             # Create the actual service request
             try:
-                result = self._execute_tool(
+                # Handle media - might be list of objects or list of dicts
+                draft_media = get_attr(draft, "media", [])
+                media_list = []
+                for m in draft_media:
+                    if isinstance(m, dict):
+                        media_list.append(m)
+                    elif hasattr(m, 'dict'):
+                        media_list.append(m.dict())
+                
+                # Access timing and location safely
+                draft_timing = get_attr(draft, "timing")
+                draft_location = get_attr(draft, "location", {})
+                draft_budget = get_attr(draft, "budget", {})
+
+                result = await self._execute_tool(
                     "create_service_request",
                     {
-                        "service_type": draft.service_type,
-                        "description": draft.description,
-                        "city": draft.location.get("city", ""),
-                        "budget_min": draft.budget.get("min", 0),
-                        "budget_max": draft.budget.get("max", 100),
-                        "timing": draft.timing or "",
-                        "media": [m.dict() for m in draft.media],
+                        "service_type": get_attr(draft, "service_type"),
+                        "description": get_attr(draft, "description"),
+                        "city": draft_location.get("city", "") if isinstance(draft_location, dict) else getattr(draft_location, "city", ""),
+                        "budget_min": draft_budget.get("min", 0) if isinstance(draft_budget, dict) else getattr(draft_budget, "min", 0),
+                        "budget_max": draft_budget.get("max", 100) if isinstance(draft_budget, dict) else getattr(draft_budget, "max", 100),
+                        "timing": draft_timing or "",
+                        "media": media_list,
                     },
                     context
                 )
@@ -754,7 +780,7 @@ class ChatService:
                 )
         return None
 
-    def _execute_tool(self, name: str, params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_tool(self, name: str, params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a tool/function and return results."""
         try:
             if name == "create_service_request":
@@ -794,7 +820,7 @@ class ChatService:
                 if not city:
                     city = profile.get("default_location", {}).get("city", "Unknown")
                 
-                result = handlers.create_service_request(
+                result = await handlers.create_service_request(
                     consumer_id=internal_id,
                     service_category=params.get("service_type", "general"),
                     service_type=params.get("service_type", ""),

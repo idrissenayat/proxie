@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any
 from fastapi import Request, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from clerk_backend_api import Clerk
-from clerk_backend_api.jwks_helpers import verify_token
+from clerk_backend_api.security import verify_token
 
 from src.platform.config import settings
 
@@ -28,6 +28,18 @@ async def get_current_user(
     FastAPI dependency to verify the Clerk JWT token.
     Returns the decoded token (user info) if valid, or raises 401.
     """
+    # LOAD TESTING/TESTING BYPASS
+    if settings.ENVIRONMENT in ["testing", "development"]:
+        # Allow bypass for load testing if X-Load-Test-Secret matches 
+        bypass_secret = getattr(settings, "LOAD_TEST_SECRET", None)
+        if bypass_secret and request.headers.get("X-Load-Test-Secret") == bypass_secret:
+            logger.info("auth_bypass_success", type="load_test")
+            return {
+                "sub": request.headers.get("X-Test-User-Id", "mock_load_test_user"),
+                "email": "loadtest@proxie.app",
+                "public_metadata": {"role": request.headers.get("X-Test-User-Role", "consumer")}
+            }
+
     if not auth:
         logger.warning("auth_missing", path=request.url.path)
         raise HTTPException(
@@ -37,20 +49,6 @@ async def get_current_user(
         )
 
     token = auth.credentials
-    
-    # LOAD TESTING/TESTING BYPASS
-    if settings.ENVIRONMENT in ["testing", "development"]:
-        # Allow bypass for load testing if X-Load-Test-Secret matches 
-        # (Usually set in ENV and passed by k6)
-        bypass_secret = getattr(settings, "LOAD_TEST_SECRET", None)
-        if bypass_secret and request.headers.get("X-Load-Test-Secret") == bypass_secret:
-            logger.info("auth_bypass_success", type="load_test")
-            # Return a mock user based on info in headers if provided, or default
-            return {
-                "sub": request.headers.get("X-Test-User-Id", "mock_load_test_user"),
-                "email": "loadtest@proxie.app",
-                "public_metadata": {"role": request.headers.get("X-Test-User-Role", "consumer")}
-            }
 
     try:
         # Verify the token against Clerk's JWKS
