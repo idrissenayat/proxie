@@ -38,6 +38,20 @@ async def get_current_user(
 
     token = auth.credentials
     
+    # LOAD TESTING/TESTING BYPASS
+    if settings.ENVIRONMENT in ["testing", "development"]:
+        # Allow bypass for load testing if X-Load-Test-Secret matches 
+        # (Usually set in ENV and passed by k6)
+        bypass_secret = getattr(settings, "LOAD_TEST_SECRET", None)
+        if bypass_secret and request.headers.get("X-Load-Test-Secret") == bypass_secret:
+            logger.info("auth_bypass_success", type="load_test")
+            # Return a mock user based on info in headers if provided, or default
+            return {
+                "sub": request.headers.get("X-Test-User-Id", "mock_load_test_user"),
+                "email": "loadtest@proxie.app",
+                "public_metadata": {"role": request.headers.get("X-Test-User-Role", "consumer")}
+            }
+
     try:
         # Verify the token against Clerk's JWKS
         # Note: In production, verify_token handles local caching of keys

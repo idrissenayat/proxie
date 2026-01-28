@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     # Clerk
     CLERK_SECRET_KEY: str = ""
     CLERK_PUBLISHABLE_KEY: str = ""
+    LOAD_TEST_SECRET: str = "proxie_load_test_key_2026"
     
     # CORS - Configurable origins
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"  # Comma-separated
