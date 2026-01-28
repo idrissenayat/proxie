@@ -23,6 +23,7 @@
     "@tailwindcss/postcss": "^4",
     "eslint": "^9",
     "eslint-config-next": "16.1.5",
+    "eslint-plugin-security": "^3.0.1",
     "tailwindcss": "^4"
   }
 }

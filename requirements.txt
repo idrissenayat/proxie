@@ -63,3 +63,5 @@ black>=24.1.0
 isort>=5.13.2
 mypy>=1.8.0
 ruff>=0.1.14
+bandit>=1.7.6
+safety>=3.0.1

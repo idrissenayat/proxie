@@ -36,6 +36,12 @@ jobs:
       - name: Type Check (mypy)
         run: mypy src/ --ignore-missing-imports
 
+      - name: Security Scan (Bandit)
+        run: bandit -r src/ -ll
+
+      - name: Dependency Scan (Safety)
+        run: safety check
+
       - name: Run Backend Tests
         env:
           ENVIRONMENT: testing
@@ -65,6 +71,9 @@ jobs:
 
       - name: Lint Frontend
         run: npm run lint
+
+      - name: Security Audit (npm audit)
+        run: npm audit --audit-level=high
 
       - name: Build Frontend (Check for compilation errors)
         env:
