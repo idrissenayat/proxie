@@ -259,7 +259,7 @@ export default function DashboardPage() {
                 <OnboardingHero onStartChat={() => router.push('/chat?role=consumer')} />
               )}
 
-              {isSignedIn && consumerRequests &&
+              {consumerRequests &&
                 consumerRequests.counts?.open === 0 &&
                 consumerRequests.counts?.pending === 0 &&
                 consumerRequests.counts?.upcoming === 0 &&

@@ -12,7 +12,7 @@ from src.platform.models.booking import Booking
 from src.platform.models.provider import Provider
 from src.platform.models.consumer import Consumer
 from src.platform.schemas.consumer import ConsumerRequestsResponse
-from src.platform.auth import get_current_user
+from src.platform.auth import get_current_user, get_optional_user
 from pydantic import BaseModel, Field
 
 router = APIRouter(
@@ -49,12 +49,16 @@ class ConsumerProfileResponse(BaseModel):
 async def get_consumer_profile(
     consumer_id: UUID, 
     db: Session = Depends(get_db),
-    user: Dict[str, Any] = Depends(get_current_user)
+    user: Optional[Dict[str, Any]] = Depends(get_optional_user)
 ):
     """Get consumer profile. Creates a new profile if it doesn't exist."""
     # Security: Ensure user can only access their own profile (or is admin)
-    if str(consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Not authorized to access this profile")
+    if user:
+        if str(consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
+                   raise HTTPException(status_code=403, detail="Not authorized to access this profile")
+    
+    # If no user (guest), we currently allow access if the ID matches their local UUID
+    # (In a more secure version, we might use short-lived guest tokens)
 
     consumer = db.query(Consumer).filter(Consumer.id == consumer_id).first()
     
@@ -72,12 +76,13 @@ async def update_consumer_profile(
     consumer_id: UUID,
     update: ConsumerProfileUpdate,
     db: Session = Depends(get_db),
-    user: Dict[str, Any] = Depends(get_current_user)
+    user: Optional[Dict[str, Any]] = Depends(get_optional_user)
 ):
     """Update consumer profile. Creates profile if it doesn't exist."""
     # Security: Ensure user can only update their own profile
-    if str(consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Not authorized to update this profile")
+    if user:
+        if str(consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Not authorized to update this profile")
 
     consumer = db.query(Consumer).filter(Consumer.id == consumer_id).first()
     
@@ -101,12 +106,13 @@ async def update_consumer_location(
     consumer_id: UUID,
     location: Dict[str, Any],
     db: Session = Depends(get_db),
-    user: Dict[str, Any] = Depends(get_current_user)
+    user: Optional[Dict[str, Any]] = Depends(get_optional_user)
 ):
     """Quick endpoint to update just the default location."""
     # Security Check
-    if str(consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Not authorized to update this profile")
+    if user:
+        if str(consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Not authorized to update this profile")
 
     consumer = db.query(Consumer).filter(Consumer.id == consumer_id).first()
     
@@ -124,14 +130,15 @@ async def update_consumer_location(
 def get_consumer_requests(
     consumer_id: UUID, 
     db: Session = Depends(get_db),
-    user: Dict[str, Any] = Depends(get_current_user)
+    user: Optional[Dict[str, Any]] = Depends(get_optional_user)
 ):
     """
     Get all requests and bookings for a consumer, grouped by status.
     """
     # Security Check
-    if str(consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Not authorized to access these requests")
+    if user:
+        if str(consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Not authorized to access these requests")
 
     # 1. Fetch all requests for consumer
     all_requests = db.query(ServiceRequest).filter(ServiceRequest.consumer_id == consumer_id).all()

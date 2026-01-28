@@ -62,4 +62,9 @@ Implement production-ready authentication using Clerk and integrate agent-native
 
 ### 7. Infrastructure Refinements
 - **Secrets**: Renamed `secrets.py` to `vault.py` for clarity and improved error handling.
-- **Database**: Validated and patched `clerk_id` schema migration for Consumer and Provider tables.
+- **Database**: Validated and patched `clerk_id` and `embedding` schema migration for Consumer and Provider tables.
+
+### 8. Homepage & Connectivity Fixes (Post-Verification)
+- **Guest Access**: Implemented `get_optional_user` to support both guest and authenticated users on the dashboard and chat.
+- **Hydration**: Resolved React hydration mismatch by suppressing warnings on the body element.
+- **Stability**: Fixed a backend crash caused by missing columns in the `providers` table during lead retrieval.

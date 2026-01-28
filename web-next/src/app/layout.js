@@ -21,7 +21,7 @@ export default function RootLayout({ children }) {
   return (
     <ClerkProvider>
       <html lang="en">
-        <body className="bg-black antialiased text-white">
+        <body className="bg-black antialiased text-white" suppressHydrationWarning>
           <div className="max-w-[480px] mx-auto flex flex-col min-h-screen border-x border-zinc-900 shadow-2xl">
             {children}
           </div>

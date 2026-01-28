@@ -71,6 +71,22 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+async def get_optional_user(
+    request: Request,
+    auth: Optional[HTTPAuthorizationCredentials] = Depends(security)
+) -> Optional[Dict[str, Any]]:
+    """
+    FastAPI dependency that returns the decoded token if valid,
+    or None if authentication is missing or invalid.
+    Useful for endpoints that support both guest and authenticated users.
+    """
+    try:
+        return await get_current_user(request, auth)
+    except HTTPException as e:
+        if e.status_code == status.HTTP_401_UNAUTHORIZED:
+            return None
+        raise e
+
 def require_role(role: str):
     """
     Dependency factory to enforce role-based access.

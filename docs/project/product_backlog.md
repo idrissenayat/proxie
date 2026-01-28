@@ -48,6 +48,9 @@
 | DONE-018 | Orchestrator Stabilization | AI Layer | 2026-01-28 |
 | DONE-019 | E2E Stability Fixes | Testing | 2026-01-28 |
 | DONE-020 | Secret Manager Refactor | Security | 2026-01-28 |
+| DONE-021 | Guest Session Support | Backend | 2026-01-28 |
+| DONE-022 | Hydration Fix & UI Polish | Frontend | 2026-01-28 |
+| DONE-023 | DB Schema Patch (Embeddings) | Backend | 2026-01-28 |
 
 ---
 
