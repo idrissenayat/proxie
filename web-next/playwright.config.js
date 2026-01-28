@@ -16,6 +16,11 @@ module.exports = defineConfig({
         baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000',
         trace: 'on-first-retry',
         screenshot: 'only-on-failure',
+        extraHTTPHeaders: {
+            'X-Load-Test-Secret': process.env.LOAD_TEST_SECRET || 'proxie_load_test_key_2026',
+            'X-Test-User-Id': 'e2e_test_user_consumer',
+            'X-Test-User-Role': 'consumer'
+        }
     },
 
     projects: [
