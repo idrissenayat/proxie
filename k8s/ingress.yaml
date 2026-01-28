@@ -1,15 +1,25 @@
-# Kong Ingress Configuration
+# Production Ingress - Unified for Web and API
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: proxie-ingress
   namespace: proxie
   annotations:
-    kubernetes.io/ingress.class: kong
-    konghq.com/strip-path: "false"
-    konghq.com/plugins: rate-limiting,cors
+    kubernetes.io/ingress.global-static-ip-name: proxie-static-ip
+    networking.gke.io/managed-certificates: proxie-ssl-cert
+    kubernetes.io/ingress.class: "gce"
 spec:
   rules:
+  - host: proxie.app
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: proxie-web-service
+            port:
+              number: 80
   - host: api.proxie.app
     http:
       paths:
