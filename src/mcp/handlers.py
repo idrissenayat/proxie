@@ -48,7 +48,15 @@ async def create_service_request(
         matcher = MatchingService(db)
         
         from src.platform.schemas.request import ServiceRequestCreate, RequestLocation, RequestRequirements, RequestTiming, RequestBudget
-        
+
+        # Filter timing dict to only include valid RequestTiming fields
+        valid_timing_fields = {"urgency", "preferred_dates", "preferred_times", "flexibility"}
+        filtered_timing = {k: v for k, v in timing.items() if k in valid_timing_fields}
+
+        # Filter budget dict to only include valid RequestBudget fields
+        valid_budget_fields = {"min", "max", "min_price", "max_price", "currency", "flexibility"}
+        filtered_budget = {k: v for k, v in budget.items() if k in valid_budget_fields}
+
         schema = ServiceRequestCreate(
             consumer_id=consumer_id,
             raw_input=raw_input,
@@ -56,8 +64,8 @@ async def create_service_request(
             service_type=service_type,
             requirements=RequestRequirements(**requirements),
             location=RequestLocation(**location),
-            timing=RequestTiming(**timing),
-            budget=RequestBudget(**budget),
+            timing=RequestTiming(**filtered_timing),
+            budget=RequestBudget(**filtered_budget),
             media=media
         )
         
@@ -70,6 +78,7 @@ async def create_service_request(
         track_request_created(service_category)
         
         return {
+            "request_id": str(req.id),
             "status": req.status,
             "message": f"Successfully posted! I've automatically notified {len(matched_ids)} top-rated providers in your area. You'll start receiving offers very soon."
         }
