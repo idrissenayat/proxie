@@ -176,20 +176,20 @@ TOOL_DECLARATIONS = [
     },
     {
         "name": "create_service_request",
-        "description": "Create a service request AFTER user has approved the draft. This posts the request to find providers. For budget, use provided values or sensible ranges.",
+        "description": "Create a service request AFTER user has approved the draft. This posts the request to find providers. If user provides a single budget value (e.g. '$40'), use that value for both budget_min and budget_max.",
         "parameters": {
             "type": "object",
             "properties": {
-                "service_type": {"type": "string", "description": "Type of service needed"},
+                "service_type": {"type": "string", "description": "Type of service needed (e.g., 'haircut', 'cleaning')"},
                 "description": {"type": "string", "description": "Detailed description of the request"},
-                "city": {"type": "string", "description": "City where service is needed"},
-                "budget_min": {"type": "number", "description": "Minimum budget in dollars"},
-                "budget_max": {"type": "number", "description": "Maximum budget in dollars"},
+                "city": {"type": "string", "description": "City where service is needed (e.g., 'Alexandria')"},
+                "budget_min": {"type": "number", "description": "Minimum budget in dollars. If user gives single value like '$40', use 40"},
+                "budget_max": {"type": "number", "description": "Maximum budget in dollars. If user gives single value like '$40', use 40"},
                 "timing": {"type": "string", "description": "When the service is needed"},
                 "hair_type": {"type": "string", "description": "Hair type if hair service (e.g., '3B curly')"},
                 "style_preferences": {"type": "string", "description": "Style preferences if relevant"}
             },
-            "required": ["service_type", "city", "budget_min", "budget_max"]
+            "required": ["service_type", "city"]
         }
     },
     {
@@ -1015,16 +1015,24 @@ class ChatService:
                 if not city:
                     city = profile.get("default_location", {}).get("city", "Unknown")
                 
+                # Handle None values explicitly (LLM might pass null)
+                budget_min = params.get("budget_min")
+                budget_max = params.get("budget_max")
+                if budget_min is None:
+                    budget_min = 0
+                if budget_max is None:
+                    budget_max = budget_min + 50 if budget_min else 100
+
                 result = await handlers.create_service_request(
                     consumer_id=internal_id,
-                    service_category=params.get("service_type", "general"),
-                    service_type=params.get("service_type", ""),
+                    service_category=params.get("service_type", "general") or "general",
+                    service_type=params.get("service_type", "") or "",
                     raw_input=description,
                     requirements={},
                     location={"city": city},
                     timing={"urgency": "flexible"},
-                    budget={"min": params.get("budget_min", 0), "max": params.get("budget_max", 100)},
-                    media=params.get("media", [])
+                    budget={"min": budget_min, "max": budget_max},
+                    media=params.get("media") or []
                 )
                 
                 if "request_id" in result:
