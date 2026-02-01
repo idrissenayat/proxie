@@ -201,18 +201,19 @@ async def tool_node(state: AgentState):
     """Executes tool calls requested by the LLM."""
     # This node will be called if next_step is 'tools'
     # We need to execute the tools and update the state with results.
-    # Since tool execution is tied to ChatService instance, 
+    # Since tool execution is tied to ChatService instance,
     # we might need to pass an executor function in context.
-    
+
     # Remove reliance on context executor which is hard to serialize
     # executor = state["context"].get("tool_executor")
-    
+
     # Import chat_service locally to avoid circular import
     from src.platform.services.chat import chat_service
+    import inspect
 
     last_msg = state["messages"][-1]
     tool_calls = last_msg.additional_kwargs.get("tool_calls", [])
-    
+
     tool_messages = []
     for tc in tool_calls:
         name = tc["function"]["name"]
@@ -221,29 +222,37 @@ async def tool_node(state: AgentState):
         except json.JSONDecodeError:
             # Handle bad JSON from LLM
             args = {}
-        
-        # internal method _execute_tool is now accessed directly
-        # passing session context
-        res = chat_service._execute_tool(name, args, state["context"])
-        
-        import inspect
-        if inspect.isawaitable(res):
-            result = await res
-        else:
-            result = res
-            
-        tool_messages.append(ToolMessage(
-            tool_call_id=tc["id"],
-            name=name,
-            content=json.dumps(result, default=str) # Ensure result is serializable
-        ))
-            
+            logger.warning("tool_node_json_decode_error", tool_name=name)
 
-        
+        try:
+            # internal method _execute_tool is now accessed directly
+            # passing session context
+            res = chat_service._execute_tool(name, args, state["context"])
+
+            if inspect.isawaitable(res):
+                result = await res
+            else:
+                result = res
+
+            logger.info("tool_execution_success", tool_name=name, result_keys=list(result.keys()) if isinstance(result, dict) else "non-dict")
+            tool_messages.append(ToolMessage(
+                tool_call_id=tc["id"],
+                name=name,
+                content=json.dumps(result, default=str)  # Ensure result is serializable
+            ))
+        except Exception as e:
+            # Log the error and return an error message to the LLM
+            logger.exception("tool_execution_failed", tool_name=name, error=str(e))
+            tool_messages.append(ToolMessage(
+                tool_call_id=tc["id"],
+                name=name,
+                content=json.dumps({"error": str(e), "status": "failed"})
+            ))
+
     return {
         "messages": tool_messages,
         "context": state["context"],
-        "next_step": "concierge" # Go back to concierge to process tool results
+        "next_step": "concierge"  # Go back to concierge to process tool results
     }
 
 # --- Graph Construction ---
