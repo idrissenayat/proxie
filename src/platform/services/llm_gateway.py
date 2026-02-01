@@ -12,7 +12,17 @@ from litellm.utils import ModelResponse
 import structlog
 from typing import List, Dict, Any, Optional
 from src.platform.config import settings
-from src.platform.metrics import track_llm_usage, LLM_LATENCY_SECONDS
+from src.platform.metrics import (
+    track_llm_usage,
+    track_llm_request,
+    track_llm_cost,
+    track_cache_hit,
+    track_cache_miss,
+    track_cache_error,
+    track_cache_set,
+    LLM_LATENCY_SECONDS,
+    CACHE_LATENCY_SECONDS,
+)
 from src.platform.services.usage import LLMUsageService
 from src.platform.database import SessionLocal
 import time
@@ -142,10 +152,15 @@ class LLMGateway:
         cache_key = None
         if use_cache and self.cache_enabled and self.redis_client:
             cache_key = self._get_cache_key(target_model, messages, tools, user_id)
+            cache_start = time.time()
             try:
                 cached = self.redis_client.get(cache_key)
+                cache_latency = time.time() - cache_start
+                CACHE_LATENCY_SECONDS.labels(cache_type="llm", operation="get").observe(cache_latency)
+
                 if cached:
                     logger.info("LLM Cache Hit", model=target_model)
+                    track_cache_hit("llm")
                     # Use LiteLLM's own response object if possible, or a simple mock
                     try:
                         return ModelResponse(**json.loads(cached))
@@ -155,17 +170,20 @@ class LLMGateway:
                             __getattr__ = dict.get
                             __setattr__ = dict.__setitem__
                             __delattr__ = dict.__delitem__
-                        
+
                         def convert(obj):
                             if isinstance(obj, dict):
                                 return DotDict({k: convert(v) for k, v in obj.items()})
                             if isinstance(obj, list):
                                 return [convert(i) for i in obj]
                             return obj
-                        
+
                         return convert(json.loads(cached))
+                else:
+                    track_cache_miss("llm")
             except Exception as e:
                 logger.error("Redis read error", error=str(e))
+                track_cache_error("llm", "get")
 
         # 1.5 Mock Mode Check
         is_mock = settings.ENVIRONMENT in ["test", "testing"] or not settings.GOOGLE_API_KEY or settings.GOOGLE_API_KEY in ["", "your-gemini-api-key", "your-key-here"]
@@ -299,28 +317,38 @@ class LLMGateway:
                         feature=feature
                     )
             
+            # Track successful request
+            track_llm_request(provider, model_name, "success")
+            track_llm_cost(provider, model_name, response.usage.prompt_tokens, response.usage.completion_tokens)
+
             # Cache Success
             if use_cache and self.cache_enabled and self.redis_client and cache_key:
+                cache_start = time.time()
                 try:
                     self.redis_client.setex(
                         cache_key,
                         self.cache_ttl,
                         json.dumps(response.to_dict())
                     )
+                    CACHE_LATENCY_SECONDS.labels(cache_type="llm", operation="set").observe(time.time() - cache_start)
+                    track_cache_set("llm")
                 except Exception as e:
                     logger.error("Redis write error", error=str(e))
+                    track_cache_error("llm", "set")
                     
             return response
 
         except Exception as e:
             logger.error("LLM Primary Provider Failed", model=target_model, error=str(e))
-            
+            track_llm_request(target_model.split('/')[0], target_model.split('/')[-1], "error")
+
             # Don't fallback if model was explicitly specified and failed
             if model and model != self.primary_model:
                 raise e
-                
+
             # Fallback to Secondary
             logger.info("Attempting LLM Fallback", model=self.fallback_model)
+            track_llm_request(target_model.split('/')[0], target_model.split('/')[-1], "fallback")
             start_time = time.time()
             try:
                 response = await litellm.acompletion(

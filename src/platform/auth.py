@@ -4,7 +4,7 @@ Integrates with Clerk to verify JWT tokens and manage user sessions.
 """
 
 import structlog
-from typing import Optional, Dict, Any
+from typing import Optional, Literal
 from fastapi import Request, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from clerk_backend_api import Clerk
@@ -18,6 +18,7 @@ from src.platform.models.consumer import Consumer
 from src.platform.models.request import ServiceRequest
 from src.platform.models.offer import Offer
 from src.platform.models.booking import Booking
+from src.platform.types import AuthenticatedUser, TestUser
 from uuid import UUID
 
 logger = structlog.get_logger(__name__)
@@ -28,7 +29,7 @@ clerk_client = Clerk(bearer_auth=settings.CLERK_SECRET_KEY)
 # Security scheme for bearer tokens
 security = HTTPBearer(auto_error=False)
 
-def verify_token(token: str) -> Dict[str, Any]:
+def verify_token(token: str) -> AuthenticatedUser:
     """Wrapper for clerk_verify_token with default options."""
     return clerk_verify_token(
         token,
@@ -37,25 +38,28 @@ def verify_token(token: str) -> Dict[str, Any]:
         )
     )
 
+
 async def get_current_user(
     request: Request,
     auth: Optional[HTTPAuthorizationCredentials] = Depends(security)
-) -> Optional[Dict[str, Any]]:
+) -> AuthenticatedUser:
     """
     FastAPI dependency to verify the Clerk JWT token.
     Returns the decoded token (user info) if valid, or raises 401.
     """
     # LOAD TESTING/TESTING BYPASS
     if settings.ENVIRONMENT in ["testing", "development"]:
-        # Allow bypass for load testing if X-Load-Test-Secret matches 
+        # Allow bypass for load testing if X-Load-Test-Secret matches
         bypass_secret = getattr(settings, "LOAD_TEST_SECRET", None)
         if bypass_secret and request.headers.get("X-Load-Test-Secret") == bypass_secret:
             logger.info("auth_bypass_success", type="load_test")
-            return {
+            role = request.headers.get("X-Test-User-Role", "consumer")
+            test_user: TestUser = {
                 "sub": request.headers.get("X-Test-User-Id", "mock_load_test_user"),
                 "email": "loadtest@proxie.app",
-                "public_metadata": {"role": request.headers.get("X-Test-User-Role", "consumer")}
+                "public_metadata": {"role": role}  # type: ignore
             }
+            return test_user
 
     if not auth:
         logger.warning("auth_missing", path=request.url.path)
@@ -91,7 +95,7 @@ async def get_current_user(
 async def get_optional_user(
     request: Request,
     auth: Optional[HTTPAuthorizationCredentials] = Depends(security)
-) -> Optional[Dict[str, Any]]:
+) -> Optional[AuthenticatedUser]:
     """
     FastAPI dependency that returns the decoded token if valid,
     or None if authentication is missing or invalid.
@@ -137,9 +141,9 @@ def require_role(role: str):
         Dependency function that validates user has the required role
     """
     async def role_checker(
-        user: Dict[str, Any] = Depends(get_current_user),
+        user: AuthenticatedUser = Depends(get_current_user),
         db: Session = Depends(get_db)
-    ):
+    ) -> AuthenticatedUser:
         clerk_id = user.get("sub")
         if not clerk_id:
             logger.error("no_clerk_id_in_token")
@@ -179,11 +183,11 @@ def require_role(role: str):
 
 
 def check_resource_ownership(
-    resource_type: str,
+    resource_type: Literal["provider", "consumer", "request", "offer", "booking"],
     resource_id: UUID,
     clerk_id: str,
     db: Session,
-    user: Optional[Dict[str, Any]] = None
+    user: Optional[AuthenticatedUser] = None
 ) -> bool:
     """
     Check if a user owns a resource.
@@ -256,7 +260,12 @@ def check_resource_ownership(
         return False
 
 
-def require_ownership(resource_type: str, resource_id: UUID, user: Dict[str, Any], db: Session):
+def require_ownership(
+    resource_type: Literal["provider", "consumer", "request", "offer", "booking"],
+    resource_id: UUID,
+    user: AuthenticatedUser,
+    db: Session
+) -> None:
     """
     Validate resource ownership and raise HTTPException if user doesn't own the resource.
     
