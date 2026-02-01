@@ -1,5 +1,5 @@
 # Sprint 11 Summary: Authentication, Testing & Stability
-**Date**: 2026-01-27
+**Date**: 2026-01-27 to 2026-01-28
 **Status**: Completed ✅
 
 ## 🎯 Objective
@@ -32,7 +32,7 @@ Implement production-ready authentication using Clerk and integrate agent-native
 4. User clicks "Connect Now" -> Clerk Sign Up -> Profile is linked.
 
 ### Multi-Modal Logic
-- Agent uses `specialsist_analysis` to interpret photos (e.g., hair texture) and saves these findings as "preferences" in the consumer profile.
+- Agent uses `specialist_analysis` to interpret photos (e.g., hair texture) and saves these findings as "preferences" in the consumer profile.
 
 ## ⏭️ Next Steps
 1. **Backend JWT Verification**: Implement `clerk-sdk-python` middleware in FastAPI to secure API endpoints.

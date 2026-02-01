@@ -52,15 +52,22 @@ async def get_consumer_profile(
     user: Optional[Dict[str, Any]] = Depends(get_optional_user)
 ):
     """Get consumer profile. Creates a new profile if it doesn't exist."""
+    consumer = db.query(Consumer).filter(Consumer.id == consumer_id).first()
+    
     # Security: Ensure user can only access their own profile (or is admin)
     if user:
-        if str(consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
-                   raise HTTPException(status_code=403, detail="Not authorized to access this profile")
-    
-    # If no user (guest), we currently allow access if the ID matches their local UUID
-    # (In a more secure version, we might use short-lived guest tokens)
-
-    consumer = db.query(Consumer).filter(Consumer.id == consumer_id).first()
+        is_admin = user.get("public_metadata", {}).get("role") == "admin"
+        if not is_admin:
+            # If consumer exists, check its clerk_id
+            if consumer and consumer.clerk_id and consumer.clerk_id != user.get("sub"):
+                raise HTTPException(status_code=403, detail="Not authorized to access this profile")
+            # If consumer exists but has no clerk_id, we might want to link it (guest-to-user)
+            # For now, allow it if it has no clerk_id (it's a "shared" or new guest record)
+            
+            # If consumer doesn't exist, we'll create it below. 
+            # In that case, we should ensure the ID being requested doesn't belong to another clerk_id.
+            # But we can't know that without checking if THAT UUID is used by someone else as their ID.
+            # Usually record ID != clerk ID, so this is fine.
     
     if not consumer:
         # Create a new consumer record
@@ -79,12 +86,14 @@ async def update_consumer_profile(
     user: Optional[Dict[str, Any]] = Depends(get_optional_user)
 ):
     """Update consumer profile. Creates profile if it doesn't exist."""
+    consumer = db.query(Consumer).filter(Consumer.id == consumer_id).first()
+    
     # Security: Ensure user can only update their own profile
     if user:
-        if str(consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
-            raise HTTPException(status_code=403, detail="Not authorized to update this profile")
-
-    consumer = db.query(Consumer).filter(Consumer.id == consumer_id).first()
+        is_admin = user.get("public_metadata", {}).get("role") == "admin"
+        if not is_admin:
+            if consumer and consumer.clerk_id and consumer.clerk_id != user.get("sub"):
+                raise HTTPException(status_code=403, detail="Not authorized to update this profile")
     
     if not consumer:
         consumer = Consumer(id=consumer_id)
@@ -126,6 +135,26 @@ async def update_consumer_location(
     
     return {"status": "success", "location": location}
 
+@router.get("/me/requests", response_model=ConsumerRequestsResponse)
+async def get_my_requests(
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get all requests and bookings for the currently authenticated consumer.
+    """
+    clerk_id = user.get("sub")
+    consumer = db.query(Consumer).filter(Consumer.clerk_id == clerk_id).first()
+    
+    if not consumer:
+        # Auto-create profile if authenticated via Clerk but no record exists
+        consumer = Consumer(id=uuid4(), clerk_id=clerk_id)
+        db.add(consumer)
+        db.commit()
+        db.refresh(consumer)
+        
+    return get_consumer_requests(consumer.id, db, user)
+
 @router.get("/{consumer_id}/requests", response_model=ConsumerRequestsResponse)
 def get_consumer_requests(
     consumer_id: UUID, 
@@ -137,18 +166,57 @@ def get_consumer_requests(
     """
     # Security Check
     if user:
-        if str(consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
-            raise HTTPException(status_code=403, detail="Not authorized to access these requests")
+        clerk_id = user.get("sub")
+        # Find if this consumer_id belongs to the current user
+        consumer_record = db.query(Consumer).filter(Consumer.id == consumer_id).first()
+        
+        if consumer_record and consumer_record.clerk_id and consumer_record.clerk_id != clerk_id:
+            # Token belongs to someone else
+            if user.get("public_metadata", {}).get("role") != "admin":
+                raise HTTPException(status_code=403, detail="Not authorized to access these requests")
+        
+        # Note: If consumer_record has NO clerk_id, we allow it (guest-to-user transition window)
 
-    # 1. Fetch all requests for consumer
+    # 1. Fetch all requests for consumer (optimized with batch loading)
+    from sqlalchemy import func
+    from src.platform.database.query_utils import optimize_consumer_requests_query
+    
     all_requests = db.query(ServiceRequest).filter(ServiceRequest.consumer_id == consumer_id).all()
+    
+    # Batch load offer counts (fixes N+1)
+    request_ids = [r.id for r in all_requests]
+    offer_counts = db.query(
+        Offer.request_id,
+        func.count(Offer.id).label('count')
+    ).filter(
+        Offer.request_id.in_(request_ids)
+    ).group_by(Offer.request_id).all()
+    
+    offer_count_map = {req_id: count for req_id, count in offer_counts}
+    
+    # Batch load best offers and providers (fixes N+1)
+    from sqlalchemy import and_
+    best_offers = db.query(Offer).filter(
+        Offer.request_id.in_(request_ids),
+        Offer.status == "pending"
+    ).order_by(Offer.created_at).all()
+    
+    # Group by request_id to get first (best) offer per request
+    best_offer_map = {}
+    provider_ids = set()
+    for offer in best_offers:
+        if offer.request_id not in best_offer_map:
+            best_offer_map[offer.request_id] = offer
+            provider_ids.add(offer.provider_id)
+    
+    # Batch load providers (fixes N+1)
+    providers = {p.id: p for p in db.query(Provider).filter(Provider.id.in_(provider_ids)).all()}
     
     open_requests = []
     pending_requests = []
     
     for req in all_requests:
-        # Count offers for this request
-        offer_count = db.query(Offer).filter(Offer.request_id == req.id).count()
+        offer_count = offer_count_map.get(req.id, 0)
         
         summary = {
             "id": req.id,
@@ -161,23 +229,37 @@ def get_consumer_requests(
             "created_at": req.created_at
         }
         
-        if req.status == "matching" and offer_count == 0:
+        # Inclusion logic: show matching, open, and pending requests
+        is_open = req.status in ["matching", "open", "pending"]
+        
+        if is_open and offer_count == 0:
             open_requests.append(summary)
-        elif req.status == "offers_received" or (req.status == "matching" and offer_count > 0):
-            # Fetch "best" offer preview (e.g., highest rated provider)
-            best_offer_db = db.query(Offer).filter(Offer.request_id == req.id, Offer.status == "pending").first()
+        elif req.status == "offers_received" or (is_open and offer_count > 0):
+            # Use pre-loaded best offer
+            best_offer_db = best_offer_map.get(req.id)
             if best_offer_db:
-                # Get provider details
-                provider = db.query(Provider).filter(Provider.id == best_offer_db.provider_id).first()
+                provider = providers.get(best_offer_db.provider_id)
                 summary["best_offer"] = {
                     "price": best_offer_db.price,
                     "provider_name": provider.name if provider else "Unknown",
                     "provider_rating": provider.rating if provider else 0.0
                 }
             pending_requests.append(summary)
+        elif req.status == "booked":
+            # These will show up in bookings section usually, but we keep them in all_requests for completeness
+            pass
 
-    # 2. Fetch bookings
+    # 2. Fetch bookings (optimized with batch loading)
     all_bookings = db.query(Booking).filter(Booking.consumer_id == consumer_id).all()
+    
+    # Batch load providers and reviews (fixes N+1)
+    booking_provider_ids = {b.provider_id for b in all_bookings}
+    booking_ids = [b.id for b in all_bookings]
+    
+    booking_providers = {p.id: p for p in db.query(Provider).filter(Provider.id.in_(booking_provider_ids)).all()}
+    
+    from src.platform.models.review import Review
+    reviews = {r.booking_id: r for r in db.query(Review).filter(Review.booking_id.in_(booking_ids)).all()}
     
     upcoming = []
     completed = []
@@ -190,8 +272,8 @@ def get_consumer_requests(
         # If status is completed, it's completed.
         
         if b.status == "confirmed":
-            # Get provider
-            provider = db.query(Provider).filter(Provider.id == b.provider_id).first()
+            # Use pre-loaded provider
+            provider = booking_providers.get(b.provider_id)
             upcoming.append({
                 "booking_id": b.id,
                 "request_id": b.request_id,
@@ -207,11 +289,9 @@ def get_consumer_requests(
                 "status": b.status
             })
         elif b.status == "completed":
-            provider = db.query(Provider).filter(Provider.id == b.provider_id).first()
-            # Check if there is a review (Assume no Review model implementation yet, or check a Review table)
-            # For now, we'll check if a review exists in a hypothetical reviews table
-            from src.platform.models.review import Review
-            review = db.query(Review).filter(Review.booking_id == b.id).first()
+            provider = booking_providers.get(b.provider_id)
+            # Use pre-loaded review
+            review = reviews.get(b.id)
             
             completed.append({
                 "booking_id": b.id,

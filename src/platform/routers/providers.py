@@ -12,7 +12,7 @@ from src.platform.schemas.provider import (
     ProfileUpdate
 )
 from src.platform.schemas.service import ServiceCreate, ServiceResponse
-from src.platform.auth import get_current_user
+from src.platform.auth import get_current_user, require_role, require_ownership
 from src.platform.services.matching import MatchingService
 
 router = APIRouter(
@@ -41,6 +41,7 @@ def list_providers(
 async def create_provider(
     provider: ProviderCreate, 
     db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user),
     background_tasks: BackgroundTasks = BackgroundTasks()
 ):
     """Create a new provider."""
@@ -53,6 +54,7 @@ async def create_provider(
     provider_data = provider.model_dump()
     
     new_provider = Provider(**provider_data)
+    new_provider.clerk_id = user.get("sub")
     db.add(new_provider)
     db.commit()
     db.refresh(new_provider)
@@ -114,12 +116,16 @@ async def create_provider_service(
     provider_id: UUID,
     service: ServiceCreate,
     db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(require_role("provider")),
     background_tasks: BackgroundTasks = BackgroundTasks()
 ):
     """Add a service to a provider."""
     provider = db.query(Provider).filter(Provider.id == provider_id).first()
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
+    
+    # Security: Ensure user owns this provider record
+    require_ownership("provider", provider_id, user, db)
         
     new_service = Service(
         provider_id=provider_id,
@@ -154,12 +160,16 @@ def list_provider_services(
 def add_offer_template(
     provider_id: UUID, 
     template: dict, # Simplified schema for MVP
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(require_role("provider"))
 ):
     """Add an offer template to a provider."""
     provider = db.query(Provider).filter(Provider.id == provider_id).first()
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
+    
+    # Security: Ensure user owns this provider record
+    require_ownership("provider", provider_id, user, db)
         
     current_templates = list(provider.offer_templates) if provider.offer_templates else []
     current_templates.append(template)
@@ -196,9 +206,8 @@ def update_provider_profile(
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
     
-    # Security Check
-    if provider.clerk_id != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Not authorized to edit this profile")
+    # Security: Ensure user owns this provider record
+    require_ownership("provider", provider_id, user, db)
     
     # Update profile fields
     update_data = profile_update.model_dump(exclude_unset=True)
@@ -230,7 +239,8 @@ def get_provider_portfolio(provider_id: UUID, db: Session = Depends(get_db)):
 def add_portfolio_photo(
     provider_id: UUID,
     photo: PortfolioPhotoCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(require_role("provider"))
 ):
     """
     Add a new photo to provider's portfolio.
@@ -238,6 +248,9 @@ def add_portfolio_photo(
     provider = db.query(Provider).filter(Provider.id == provider_id).first()
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
+    
+    # Security: Ensure user owns this provider record
+    require_ownership("provider", provider_id, user, db)
     
     new_photo = ProviderPortfolioPhoto(
         provider_id=provider_id,
@@ -253,7 +266,8 @@ def update_portfolio_photo(
     provider_id: UUID,
     photo_id: UUID,
     photo_update: PortfolioPhotoUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(require_role("provider"))
 ):
     """
     Update a portfolio photo's caption or display order.
@@ -265,6 +279,9 @@ def update_portfolio_photo(
     
     if not photo:
         raise HTTPException(status_code=404, detail="Portfolio photo not found")
+    
+    # Security: Ensure user owns this provider record
+    require_ownership("provider", provider_id, user, db)
     
     update_data = photo_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
@@ -278,7 +295,8 @@ def update_portfolio_photo(
 def delete_portfolio_photo(
     provider_id: UUID,
     photo_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(require_role("provider"))
 ):
     """
     Delete a portfolio photo.
@@ -291,6 +309,9 @@ def delete_portfolio_photo(
     if not photo:
         raise HTTPException(status_code=404, detail="Portfolio photo not found")
     
+    # Security: Ensure user owns this provider record
+    require_ownership("provider", provider_id, user, db)
+    
     db.delete(photo)
     db.commit()
     return None
@@ -302,7 +323,8 @@ def update_provider_service(
     provider_id: UUID,
     service_id: UUID,
     service_update: dict,  # Simplified for MVP
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(require_role("provider"))
 ):
     """
     Update a provider's service.
@@ -314,6 +336,9 @@ def update_provider_service(
     
     if not service:
         raise HTTPException(status_code=404, detail="Service not found")
+    
+    # Security: Ensure user owns this provider record
+    require_ownership("provider", provider_id, user, db)
     
     for key, value in service_update.items():
         if hasattr(service, key):
@@ -327,7 +352,8 @@ def update_provider_service(
 def delete_provider_service(
     provider_id: UUID,
     service_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(require_role("provider"))
 ):
     """
     Delete a provider's service.
@@ -339,6 +365,9 @@ def delete_provider_service(
     
     if not service:
         raise HTTPException(status_code=404, detail="Service not found")
+    
+    # Security: Ensure user owns this provider record
+    require_ownership("provider", provider_id, user, db)
     
     db.delete(service)
     db.commit()

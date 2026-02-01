@@ -74,6 +74,9 @@ Proxie features a premium, agent-native experience built with **Next.js 14** and
 - 💾 **Redis Session Store** - Scalable session management
 - 🛠 **Provider Enrollment** - Conversational onboarding system
 - 🔒 **Infrastructure Hardening** - Kong API Gateway + GKE support
+- 🛡️ **Security & Testing** - JWT auth, RBAC, ownership validation, 143+ tests
+- ⚡ **Performance** - Async LLM processing, caching, query optimization, rate limiting
+- 📊 **Error Tracking** - Sentry integration for frontend error monitoring
 
 ### Mobile App (Archive)
 
@@ -86,6 +89,9 @@ The legacy mobile interface in `/mobile` is built with Expo. It is currently arc
 - [Roadmap](docs/project/roadmap.md)
 - [API Documentation](docs/api/README.md)
 - [Sprint 11 Summary](docs/project/sprint-11-architecture-2.0.md) - Auth & Profile Sync
+- [Implementation Summary](IMPLEMENTATION_SUMMARY.md) - Security, Testing, Performance improvements
+- [Quick Reference](QUICK_REFERENCE.md) - Developer quick reference guide
+- [Sentry Setup](web-next/SENTRY_SETUP.md) - Frontend error tracking setup
 
 ## Project Structure
 

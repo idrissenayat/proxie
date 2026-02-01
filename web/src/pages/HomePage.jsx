@@ -1,112 +1,86 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import Button from '../components/Button';
-import { getProviders } from '../api/client';
-import { MessageCircle, Layout, ChevronDown } from 'lucide-react';
+import { Search, Briefcase, MessageSquare, ArrowRight } from 'lucide-react';
 
 const HomePage = () => {
     const navigate = useNavigate();
-    const [providers, setProviders] = useState([]);
-    const [selectedProvider, setSelectedProvider] = useState("");
-
-    useEffect(() => {
-        getProviders().then(res => {
-            setProviders(res.data);
-            if (res.data.length > 0) setSelectedProvider(res.data[0].id);
-        });
-    }, []);
 
     return (
-        <div className="flex-1 flex flex-col p-6 bg-white min-h-screen">
-            <div className="mt-12 mb-16 text-center">
-                <div className="w-16 h-16 bg-blue-600 rounded-2xl mx-auto mb-4 flex items-center justify-center shadow-lg shadow-blue-200">
-                    <span className="text-white text-3xl font-bold">P</span>
-                </div>
-                <h1 className="text-4xl font-black text-gray-900 tracking-tight">Proxie</h1>
-                <p className="text-gray-500 font-medium">Your craft, represented</p>
+        <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center p-6 relative overflow-hidden">
+            {/* Background Gradients */}
+            <div className="absolute top-0 left-0 w-full h-96 bg-blue-600/10 blur-[100px] rounded-full -translate-y-1/2 pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-full h-96 bg-purple-600/10 blur-[100px] rounded-full translate-y-1/2 pointer-events-none" />
+
+            {/* Header */}
+            <div className="text-center mb-12 z-10 animate-in fade-in slide-in-from-top-8 duration-700">
+                <h1 className="text-6xl font-black tracking-tighter mb-2 bg-gradient-to-br from-white via-zinc-200 to-zinc-500 bg-clip-text text-transparent">
+                    Proxie
+                </h1>
+                <p className="text-zinc-500 font-medium text-lg tracking-wide">
+                    Your craft, represented
+                </p>
             </div>
 
-            <div className="space-y-10">
-                {/* Consumer Section */}
-                <section className="space-y-4">
-                    <h2 className="text-xs font-black uppercase tracking-widest text-gray-400 ml-1">I need a service</h2>
-                    <div className="space-y-3">
+            {/* Main Cards Container */}
+            <div className="w-full max-w-md space-y-6 z-10">
+
+                {/* 1. Consumer Card */}
+                <div className="group relative bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-[2rem] p-8 overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:border-zinc-700 hover:shadow-2xl hover:shadow-blue-500/10">
+                    <div className="absolute top-0 right-0 p-8 opacity-20 group-hover:opacity-40 transition-opacity">
+                        <Search size={64} className="text-white" />
+                    </div>
+
+                    <div className="relative">
+                        <h2 className="text-3xl font-bold mb-2">Find a Service</h2>
+                        <p className="text-zinc-400 mb-8 max-w-[200px] leading-relaxed">
+                            Find vetted professionals for any task, instantly.
+                        </p>
+
                         <button
                             onClick={() => navigate('/chat?role=consumer')}
-                            className="w-full flex items-center justify-between p-5 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-100 active:scale-[0.98] transition-all"
+                            className="w-full h-14 bg-gradient-to-r from-blue-600 to-blue-500 rounded-xl font-bold text-white shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 active:scale-[0.98] transition-all flex items-center justify-center gap-2 group-hover:translate-x-1 duration-300"
                         >
-                            <div className="flex items-center space-x-4">
-                                <div className="p-2 bg-white/20 rounded-lg">
-                                    <MessageCircle size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <div className="font-bold text-lg">Chat with Agent</div>
-                                    <div className="text-white/70 text-sm">Find and book instantly</div>
-                                </div>
-                            </div>
-                        </button>
-                        <button
-                            onClick={() => navigate('/request/new')}
-                            className="w-full flex items-center space-x-3 p-4 bg-gray-50 text-gray-600 rounded-2xl border border-gray-100 active:bg-gray-100 transition-colors"
-                        >
-                            <Layout size={18} />
-                            <span className="font-bold">Use Forms</span>
+                            <MessageSquare size={20} className="fill-current" />
+                            Chat with Agent
                         </button>
                     </div>
-                </section>
+                </div>
 
-                {/* Provider Section */}
-                <section className="space-y-4">
-                    <div className="flex items-center justify-between ml-1">
-                        <h2 className="text-xs font-black uppercase tracking-widest text-gray-400">I'm a provider</h2>
-                        {providers.length > 0 && (
-                            <div className="flex items-center text-[10px] font-bold text-gray-400 border border-gray-100 px-2 py-0.5 rounded-full">
-                                TEST AS: {providers.find(p => p.id === selectedProvider)?.name.toUpperCase()}
-                            </div>
-                        )}
+                {/* 2. Provider Card */}
+                <div className="group relative bg-zinc-900/50 backdrop-blur-xl border border-zinc-800 rounded-[2rem] p-8 overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:border-zinc-700 hover:shadow-2xl hover:shadow-green-500/10">
+                    <div className="absolute top-0 right-0 p-8 opacity-20 group-hover:opacity-40 transition-opacity">
+                        <Briefcase size={64} className="text-emerald-400" />
                     </div>
 
-                    <div className="relative mb-3">
-                        <select
-                            className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl font-bold text-gray-700 outline-none appearance-none"
-                            value={selectedProvider}
-                            onChange={(e) => setSelectedProvider(e.target.value)}
-                        >
-                            {providers.map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                        </select>
-                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
-                    </div>
+                    <div className="relative">
+                        <h2 className="text-3xl font-bold mb-2 text-white">Earn as a Pro</h2>
+                        <p className="text-zinc-400 mb-8 max-w-[200px] leading-relaxed">
+                            Join skilled providers and get matched with leads.
+                        </p>
 
-                    <div className="space-y-3">
-                        <button
-                            onClick={() => navigate(`/chat?role=provider&provider_id=${selectedProvider}`)}
-                            className="w-full flex items-center justify-between p-5 bg-gray-900 text-white rounded-2xl shadow-lg shadow-gray-200 active:scale-[0.98] transition-all"
-                        >
-                            <div className="flex items-center space-x-4">
-                                <div className="p-2 bg-white/10 rounded-lg">
-                                    <MessageCircle size={24} />
-                                </div>
-                                <div className="text-left">
-                                    <div className="font-bold text-lg">Chat with Agent</div>
-                                    <div className="text-white/50 text-sm">Manage leads and offers</div>
-                                </div>
-                            </div>
-                        </button>
-                        <button
-                            onClick={() => navigate('/provider')}
-                            className="w-full flex items-center space-x-3 p-4 bg-gray-50 text-gray-600 rounded-2xl border border-gray-100 active:bg-gray-100 transition-colors"
-                        >
-                            <Layout size={18} />
-                            <span className="font-bold">Use Dashboard</span>
-                        </button>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => navigate('/chat?role=enrollment&initial=I want to join Proxie')}
+                                className="flex-1 h-14 bg-white text-black rounded-xl font-bold shadow-lg shadow-white/5 hover:bg-zinc-200 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                            >
+                                Start Enrollment
+                            </button>
+                            <button
+                                onClick={() => navigate('/provider')}
+                                className="w-14 h-14 bg-zinc-800 rounded-xl flex items-center justify-center hover:bg-zinc-700 active:scale-95 transition-all border border-zinc-700"
+                                title="Provider Dashboard"
+                            >
+                                <ArrowRight size={20} />
+                            </button>
+                        </div>
                     </div>
-                </section>
+                </div>
+
             </div>
 
-            <footer className="mt-auto py-8 text-center text-gray-300 text-sm font-medium">
-                PROXIE PLATFORM &copy; 2026
+            {/* Footer */}
+            <footer className="mt-16 text-zinc-600 text-sm font-medium">
+                © 2026 Proxie Platform
             </footer>
         </div>
     );

@@ -10,6 +10,8 @@ from src.platform.models.request import ServiceRequest
 from src.platform.models.booking import Booking
 from src.platform.schemas.offer import OfferCreate, OfferResponse, OfferUpdate
 from src.platform.schemas.booking import BookingResponse, BookingLocation
+from src.platform.auth import get_current_user, require_role
+from typing import Dict, Any
 
 router = APIRouter(
     prefix="/offers",
@@ -21,7 +23,8 @@ router = APIRouter(
 def list_offers(
     provider_id: UUID = None,
     request_id: UUID = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
     List offers, optionally filtered by provider or request.
@@ -37,7 +40,8 @@ def list_offers(
 @router.post("/", response_model=OfferResponse, status_code=status.HTTP_201_CREATED)
 def create_offer(
     offer: OfferCreate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(require_role("provider"))
 ):
     """
     Provider submits an offer in response to a request.
@@ -84,7 +88,11 @@ def create_offer(
     return db_offer
 
 @router.put("/{offer_id}/accept", response_model=BookingResponse)
-def accept_offer(offer_id: UUID, db: Session = Depends(get_db)):
+def accept_offer(
+    offer_id: UUID,
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(require_role("consumer"))
+):
     """
     Consumer accepts an offer, creating a confirmed booking.
     """
@@ -152,7 +160,11 @@ def accept_offer(offer_id: UUID, db: Session = Depends(get_db)):
     return booking
 
 @router.get("/{offer_id}", response_model=OfferResponse)
-def get_offer(offer_id: UUID, db: Session = Depends(get_db)):
+def get_offer(
+    offer_id: UUID,
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user)
+):
     offer = db.query(Offer).filter(Offer.id == offer_id).first()
     if not offer:
         raise HTTPException(status_code=404, detail="Offer not found")

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, EmailStr, Field, HttpUrl
+from pydantic import BaseModel, EmailStr, Field, HttpUrl, ConfigDict
 from uuid import UUID
 
 # --- Location Models ---
@@ -101,8 +101,7 @@ class ProviderResponse(ProviderBase):
     response_rate: float = 0.0
     average_response_time_hours: Optional[float] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # --- Sprint 10: Portfolio Management ---
 
@@ -123,8 +122,7 @@ class PortfolioPhotoResponse(BaseModel):
     caption: Optional[str] = None
     display_order: int
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # --- Sprint 10: Profile Management ---
 

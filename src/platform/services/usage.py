@@ -9,7 +9,7 @@ import structlog
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from src.platform.models.usage import LLMUsage
 from src.platform.config import settings
 
@@ -54,11 +54,15 @@ class LLMUsageService:
         feature: Optional[str] = None
     ) -> LLMUsage:
         """Log LLM usage to the database."""
+        # Ensure IDs are strings as the Model expects VARCHAR
+        u_id = str(user_id) if user_id else None
+        s_id = str(session_id) if session_id else None
+        
         cost = self.calculate_cost(model, prompt_tokens, completion_tokens)
         
         usage = LLMUsage(
-            user_id=user_id,
-            session_id=session_id,
+            user_id=u_id,
+            session_id=s_id,
             provider=provider,
             model=model,
             prompt_tokens=prompt_tokens,
@@ -74,7 +78,7 @@ class LLMUsageService:
         
         logger.info(
             "llm_usage_recorded", 
-            user_id=user_id, 
+            user_id=u_id, 
             cost=f"${cost:.6f}", 
             model=model
         )
@@ -82,27 +86,31 @@ class LLMUsageService:
 
     def is_over_budget(self, user_id: Optional[str], session_id: Optional[str]) -> bool:
         """Check if user or session has exceeded their budget."""
-        if not user_id and not session_id:
-            return False # Unauthenticated/untracked allowed for now, or tighten later
+        # Ensure IDs are strings as the Model columns are VARCHAR
+        u_id = str(user_id) if user_id else None
+        s_id = str(session_id) if session_id else None
+        
+        if not u_id and not s_id:
+            return False 
             
         # 1. Check Session Limit
-        if session_id:
+        if s_id:
             session_cost = self.db.query(func.sum(LLMUsage.estimated_cost_usd))\
-                .filter(LLMUsage.session_id == session_id).scalar() or 0.0
+                .filter(LLMUsage.session_id == s_id).scalar() or 0.0
             
             if session_cost >= settings.LLM_SESSION_LIMIT:
-                logger.warning("llm_session_budget_exceeded", session_id=session_id, cost=session_cost)
+                logger.warning("llm_session_budget_exceeded", session_id=s_id, cost=session_cost)
                 return True
                 
         # 2. Check Daily User Limit
-        if user_id:
-            today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        if u_id:
+            today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
             daily_cost = self.db.query(func.sum(LLMUsage.estimated_cost_usd))\
-                .filter(LLMUsage.user_id == user_id)\
+                .filter(LLMUsage.user_id == u_id)\
                 .filter(LLMUsage.created_at >= today).scalar() or 0.0
                 
             if daily_cost >= settings.LLM_DAILY_LIMIT_PER_USER:
-                logger.warning("llm_user_daily_budget_exceeded", user_id=user_id, cost=daily_cost)
+                logger.warning("llm_user_daily_budget_exceeded", user_id=u_id, cost=daily_cost)
                 return True
                 
         return False

@@ -1,0 +1,42 @@
+name: haircut_specialist
+description: Domain expert for hair services, styling, and cut complexity.
+
+capabilities:
+  - Identify hair type/texture (1A-4C)
+  - Estimate complexity based on length and density
+  - Warn about chemical incompatibilities
+  - Suggest maintenance schedules
+
+pricing_factors:
+  hair_length:
+    short: 1.0
+    medium: 1.2
+    long: 1.5
+    extra_long: 1.8
+  
+  density:
+    thin: 1.0
+    medium: 1.1
+    thick: 1.3
+  
+  service_type:
+    trim: 0.8
+    cut: 1.0
+    fade: 0.9
+    color_single: 1.5
+    color_correction: 3.0
+    silk_press: 1.4
+
+technical_terms:
+  - "fade"
+  - "taper"
+  - "balayage"
+  - "developer"
+  - "guard"
+  - "process time"
+  - "4C"
+  - "porosity"
+
+warnings:
+  color_correction: "Color correction is unpredictable. Recommend consultation first."
+  bleach_damage: "Check hair health before bleaching."

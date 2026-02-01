@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 
 from src.platform.database import get_db
 from src.platform.models.provider import ProviderEnrollment
+from src.platform.auth import get_optional_user
+from typing import Dict, Any, Optional
 
 router = APIRouter(
     prefix="/enrollment",
@@ -25,7 +27,11 @@ def start_enrollment(db: Session = Depends(get_db)):
     return {"enrollment_id": enrollment.id, "status": enrollment.status}
 
 @router.get("/{id}")
-def get_enrollment(id: UUID, db: Session = Depends(get_db)):
+def get_enrollment(
+    id: UUID,
+    db: Session = Depends(get_db),
+    user: Optional[Dict[str, Any]] = Depends(get_optional_user)
+):
     """Get current enrollment data."""
     enrollment = db.query(ProviderEnrollment).filter(ProviderEnrollment.id == id).first()
     if not enrollment:
@@ -33,7 +39,12 @@ def get_enrollment(id: UUID, db: Session = Depends(get_db)):
     return enrollment
 
 @router.patch("/{id}")
-def update_enrollment(id: UUID, data_update: Dict[str, Any], db: Session = Depends(get_db)):
+def update_enrollment(
+    id: UUID,
+    data_update: Dict[str, Any],
+    db: Session = Depends(get_db),
+    user: Optional[Dict[str, Any]] = Depends(get_optional_user)
+):
     """Update enrollment data."""
     from sqlalchemy.orm.attributes import flag_modified
     
@@ -52,7 +63,11 @@ def update_enrollment(id: UUID, data_update: Dict[str, Any], db: Session = Depen
     return enrollment
 
 @router.post("/{id}/submit")
-def submit_enrollment(id: UUID, db: Session = Depends(get_db)):
+def submit_enrollment(
+    id: UUID,
+    db: Session = Depends(get_db),
+    user: Optional[Dict[str, Any]] = Depends(get_optional_user)
+):
     """Submit enrollment for verification."""
     enrollment = db.query(ProviderEnrollment).filter(ProviderEnrollment.id == id).first()
     if not enrollment:

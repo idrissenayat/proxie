@@ -21,6 +21,7 @@ class Service(Base):
     
     # Service details
     name = Column(String(255), nullable=False)
+    category = Column(String(100), nullable=True) # Domain category (e.g., haircut, plumbing)
     description = Column(Text)
     duration_minutes = Column(Integer)
     

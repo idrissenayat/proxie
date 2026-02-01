@@ -1,7 +1,7 @@
 from datetime import date, datetime, time
 from typing import Optional, Literal
 from uuid import UUID
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 class BookingLocation(BaseModel):
     type: Literal["provider_location", "consumer_location", "other"]
@@ -29,8 +29,7 @@ class BookingResponse(BookingCreate):
     updated_at: Optional[datetime] = None
     status: str
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class BookingUpdate(BaseModel):
     status: Optional[str] = None

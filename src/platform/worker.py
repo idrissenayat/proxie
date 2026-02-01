@@ -6,6 +6,7 @@ Handles offloading of heavy processing, such as LLM specialist analysis.
 
 from celery import Celery
 import structlog
+from typing import List, Dict, Optional
 from src.platform.config import settings
 
 logger = structlog.get_logger()
@@ -115,6 +116,121 @@ def analyze_session_media(session_id: str):
         logger.warning("No specialist found for service_type", service_type=service_type)
 
     return {"status": "completed", "session_id": session_id}
+
+@celery_app.task(name="process_chat_message", bind=True)
+def process_chat_message_task(
+    self,
+    message: str,
+    session_id: str,
+    role: str = "consumer",
+    consumer_id: Optional[str] = None,
+    provider_id: Optional[str] = None,
+    enrollment_id: Optional[str] = None,
+    media: Optional[List[Dict]] = None,
+    action: Optional[str] = None,
+    clerk_id: Optional[str] = None
+):
+    """
+    Process a chat message asynchronously in a Celery worker.
+    
+    This task handles the full chat processing pipeline:
+    1. Load/create session
+    2. Process message through orchestrator
+    3. Handle tool calls
+    4. Return response
+    
+    Returns:
+        dict: {
+            "session_id": str,
+            "message": str,
+            "data": Optional[Dict],
+            "draft": Optional[Dict],
+            "awaiting_approval": bool
+        }
+    """
+    import asyncio
+    from src.platform.services.chat import chat_service
+    from src.platform.schemas.media import MediaAttachment
+    
+    logger.info(
+        "Processing chat message task",
+        task_id=self.request.id,
+        session_id=session_id,
+        role=role
+    )
+    
+    try:
+        # Convert media dicts to MediaAttachment objects if provided
+        media_attachments = None
+        if media:
+            media_attachments = [
+                MediaAttachment(**m) if isinstance(m, dict) else m
+                for m in media
+            ]
+        
+        # Run async chat handler
+        # Handle both sync and async contexts
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in an async context, need to use nest_asyncio or run in thread
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(
+                    asyncio.run,
+                    chat_service.handle_chat(
+                        message=message,
+                        session_id=session_id,
+                        role=role,
+                        consumer_id=consumer_id,
+                        provider_id=provider_id,
+                        enrollment_id=enrollment_id,
+                        media=media_attachments,
+                        action=action,
+                        clerk_id=clerk_id
+                    )
+                )
+                result = future.result()
+        except RuntimeError:
+            # No running loop, we can use asyncio.run directly
+            result = asyncio.run(
+                chat_service.handle_chat(
+                    message=message,
+                    session_id=session_id,
+                    role=role,
+                    consumer_id=consumer_id,
+                    provider_id=provider_id,
+                    enrollment_id=enrollment_id,
+                    media=media_attachments,
+                    action=action,
+                    clerk_id=clerk_id
+                )
+            )
+        
+        session_id_result, response_msg, data, draft, awaiting_approval = result
+        
+        return {
+            "status": "completed",
+            "session_id": session_id_result,
+            "message": response_msg,
+            "data": data,
+            "draft": draft.model_dump() if draft else None,
+            "awaiting_approval": awaiting_approval
+        }
+        
+    except Exception as e:
+        logger.error(
+            "Chat message processing failed",
+            task_id=self.request.id,
+            error=str(e),
+            exc_info=True
+        )
+        # Update task state
+        self.update_state(
+            state="FAILURE",
+            meta={"error": str(e)}
+        )
+        raise
+
 
 @celery_app.task(name="process_llm_inference")
 def process_llm_inference(messages: list, context: dict):

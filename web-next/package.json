@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^6.36.10",
+    "@sentry/nextjs": "^10.38.0",
     "axios": "^1.13.3",
     "lucide-react": "^0.563.0",
     "next": "16.1.5",

@@ -8,7 +8,7 @@ import secrets
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 from typing import List, Any, Dict, Optional
-from pydantic import model_validator
+from pydantic import model_validator, ConfigDict
 
 
 class Settings(BaseSettings):
@@ -98,10 +98,14 @@ class Settings(BaseSettings):
     
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60
+    RATE_LIMIT_PER_USER_PER_MINUTE: int = 100  # Higher limit for authenticated users
+    RATE_LIMIT_CHAT_PER_MINUTE: int = 30  # Lower limit for chat endpoint
+    RATE_LIMIT_ENABLED: bool = True
     
     # Features
     FEATURE_WEBSOCKET_ENABLED: bool = True
     FEATURE_LLM_CACHING_ENABLED: bool = True
+    FEATURE_ASYNC_CHAT_ENABLED: bool = False  # Enable async chat via Celery
     
     # Chat API Key (optional - if set, requires auth for /chat endpoint)
     CHAT_API_KEY: str = ""  # Empty means no auth required (for pilot)
@@ -143,9 +147,10 @@ class Settings(BaseSettings):
             return ["*"]
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8"
+    )
 
 
 @lru_cache()

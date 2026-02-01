@@ -20,11 +20,12 @@ function App() {
       <div className="bg-black min-h-screen">
         <div className="max-w-phone mx-auto flex flex-col min-h-screen overflow-x-hidden">
           <Routes>
-            {/* New Dashboard as Home */}
-            <Route path="/" element={<DashboardPage />} />
+            {/* Dashboard (New Unified View) */}
+            <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/chat" element={<ChatPage />} />
 
-            {/* Legacy Home (Forms) */}
+            {/* Home (Legacy Landing) */}
+            <Route path="/" element={<HomePage />} />
             <Route path="/home" element={<HomePage />} />
 
             {/* Consumer routes */}

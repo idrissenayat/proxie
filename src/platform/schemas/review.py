@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, Dict
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 class ReviewCreate(BaseModel):
     booking_id: UUID
@@ -16,5 +16,4 @@ class ReviewResponse(ReviewCreate):
     created_at: datetime
     visible: bool = True
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

@@ -7,6 +7,8 @@ from src.platform.database import get_db
 from src.platform.models.review import Review
 from src.platform.models.booking import Booking
 from src.platform.schemas.review import ReviewCreate, ReviewResponse
+from src.platform.auth import get_current_user
+from typing import Dict, Any
 
 router = APIRouter(
     prefix="/reviews",
@@ -17,7 +19,8 @@ router = APIRouter(
 @router.post("/", response_model=ReviewResponse, status_code=status.HTTP_201_CREATED)
 def create_review(
     review: ReviewCreate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
     Submit a review for a completed booking.

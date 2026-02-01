@@ -70,9 +70,8 @@ async def create_service_request(
         track_request_created(service_category)
         
         return {
-            "request_id": str(req.id),
             "status": req.status,
-            "message": f"Request created. Found {len(matched_ids)} matching providers."
+            "message": f"Successfully posted! I've automatically notified {len(matched_ids)} top-rated providers in your area. You'll start receiving offers very soon."
         }
 
 def get_offers(request_id: UUID) -> Dict[str, Any]:

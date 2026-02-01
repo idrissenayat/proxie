@@ -101,3 +101,11 @@ uploads/
 *.key
 credentials.json
 token.json
+
+# Session files
+.sessions.json
+.test_sessions.json
+
+# Test artifacts
+test_write.txt
+reproduce_error.py

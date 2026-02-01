@@ -19,88 +19,22 @@ from src.platform.services.media import media_service
 from src.platform.services.specialists import specialist_registry
 from src.platform.services.suggestions import suggestion_service
 from src.platform.services.llm_gateway import llm_gateway
+from src.platform.services.memory_service import MemoryService
+from src.platform.services.handoff_manager import HandoffManager
+from src.platform.services.session_manager import session_manager
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
 from src.platform.services.orchestrator import proxie_orchestrator
 
 logger = structlog.get_logger(__name__)
 
-CONSUMER_SYSTEM_PROMPT = """You are the Proxie Consumer Agent, a premium concierge for users looking for high-quality services.
-
-Your goal: Orchestrate a seamless, high-end experience that feels like chatting with a personal assistant.
-
-Account Creation & Personalization:
-- If 'consumer_id' is present but 'name' or 'default_location' are missing, your first priority is to gather this info naturally.
-- ALWAYS use the user's name if available in {consumer_profile}.
-- If you just updated their profile, proactively suggest they "Secure their profile" to keep their preferences safe.
-
-Rich Interaction Rules:
-- Proactive Assistance: Don't just answer; guide. For example, "I've analyzed your photo! It looks like you're looking for a fade. Would you like me to find stylists who specialize in that?"
-- Rich UI Elements: You can use special tags to trigger frontend widgets:
-  - Mentioning "I'm showing you the service catalog" will trigger the visual selector.
-  - Mentioning "Let's pick a time" will trigger the calendar picker.
-  - Use [button: Text | action] for quick shortcuts, e.g., [button: Approve Draft | approve_request].
-
-Conversational Style:
-- Professional yet warm. Use emojis sparingly for personality.
-- Be concise. One step at a time.
-- If the user shares a photo, acknowledge what you see in it immediately.
-
-Capabilities:
-- Analyze photos to identify hair types or service needs.
-- Prepare draft requests and ask for approval.
-- Post requests to the live marketplace via 'create_service_request'.
-- List and help select provider offers via 'get_offers' and 'accept_offer'.
-- Get and update user profile info via 'get_consumer_profile' and 'update_consumer_profile'.
-"""
-
-PROVIDER_SYSTEM_PROMPT = """You are the Proxie Provider Agent, an AI companion helping skilled professionals manage their business and leads.
-Your context: You have access to {provider_name}'s profile, services, and availability.
-
-Your goal:
-- Help providers browse and understand their leads (matching requests).
-- Explain technical details from 'specialist_analysis' found in leads.
-- Use 'suggest_offer' to recommend pricing and timing based on complexity.
-- Assist in drafting and submitting professional offers.
-- Help tracking lead status (new vs. viewed).
-
-Tools you can use:
-- 'get_my_leads': Lists all requests that match the provider's skills.
-- 'get_lead_details': Gets full info including consumer media and specialist notes.
-- 'suggest_offer': Gets AI advice on pricing and availability.
-- 'draft_offer': Prepares a draft for the provider's review.
-- 'submit_offer': Sends the final offer to the consumer.
-
-Rules:
-- Never submit an offer without the provider's approval.
-- Be professional, efficient, and proactive in identifying high-value leads.
-"""
-
-ENROLLMENT_SYSTEM_PROMPT = """You are the Enrollment Agent for Proxie, helping new service providers join the platform.
-
-Your goal: Guide providers through enrollment in a friendly, conversational way. Collect all required information while making the process feel easy and quick.
-
-Process to follow:
-1. Welcome and explain the enrollment journey.
-2. Collect profile info (name, business name, phone, email).
-3. Select services from the catalog using 'get_service_catalog'. 
-   IMPORTANT: If the provider has already mentioned their profession (e.g. "hairstylist", "plumber", "cleaner"), 
-   DO NOT show all categories. Only show the relevant category and its services.
-   For example, if they said "I'm a hairstylist", only show Hair & Beauty services, not Cleaning/Plumbing/etc.
-4. Set pricing and duration for each service.
-5. Set location and service radius.
-6. Collect weekly availability.
-7. Portfolio: encourage 3-10 photos. Use vision to describe and categorize their work.
-8. Bio: help them draft a professional bio based on their story.
-9. Review: Show a summary of their enrollment before submission.
-
-Rules:
-- Be encouraging and positive.
-- One question at a time.
-- Confirm info before saving using tools.
-- If they seem stuck, suggest typical pricing or durations from catalog metadata.
-- NEVER show unrelated service categories. If someone is a hairstylist, only show hair-related services.
-"""
+from src.platform.services.prompts import (
+    CONSUMER_SYSTEM_PROMPT, 
+    PROVIDER_SYSTEM_PROMPT, 
+    ENROLLMENT_SYSTEM_PROMPT,
+    EXTRACTION_PROMPT
+)
+from src.platform.services.context_tracker import ConversationContext, ContextSource
 
 # Keep general prompt as fallback
 SYSTEM_PROMPT = CONSUMER_SYSTEM_PROMPT
@@ -156,8 +90,93 @@ ENROLLMENT_TOOL_DECLARATIONS = [
 
 TOOL_DECLARATIONS = [
     {
+        "name": "recall_preferences",
+        "description": "Recall specific user preferences from long-term memory. Use this when the user asks 'What is my budget?' or 'Do you remember my style?'.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "key": {"type": "string", "description": "Specific preference key to look up (e.g., 'budget', 'hair_style', 'location')"}
+            }
+        }
+    },
+    {
+        "name": "update_preferences",
+        "description": "Explicitly update a user's long-term preferences. Use this when the user says 'My new budget is $100' or 'I moved to Queens'. For budgets, if a single value is provided, use it for both budget_min and budget_max.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "budget_min": {"type": "number"},
+                "budget_max": {"type": "number"},
+                "location": {"type": "string"},
+                "timing": {"type": "string"},
+                "communication_style": {"type": "string"}
+            }
+        }
+    },
+    {
+        "name": "draft_offer",
+        "description": "Draft an offer to a consumer.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "price": {"type": "number", "description": "Offer price"},
+                "message": {"type": "string", "description": "Personal message to consumer"}
+            },
+            "required": ["price", "message"]
+        }
+    },
+    {
+        "name": "request_quotes_from_agents",
+        "description": "Ask provider agents for quotes on a request.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "provider_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of provider UUIDs to query"
+                },
+                "request_details": {
+                    "type": "object",
+                    "description": "Override details of the request (optional)"
+                }
+            },
+            "required": ["provider_ids"]
+        }
+    },
+    {
+        "name": "get_booking_history",
+        "description": "Get a list of the user's past bookings. Useful for 'Rebook my last haircut' or 'When was my cleaning?'.",
+        "parameters": {"type": "object", "properties": {}}
+    },
+    {
+        "name": "suggest_providers",
+        "description": "Find providers similar to ones the user has liked before. Use this when the user asks for recommendations.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "service_category": {"type": "string"}
+            }
+        }
+    },
+    {
+        "name": "update_request_details",
+        "description": "Update the current service request draft with details provided by the user (service type, location, budget, etc.). Call this as soon as you extract these details from the conversation to ensure they are remembered. If a single budget value is provided, use it for both budget_min and budget_max.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "service_type": {"type": "string", "description": "Type of service needed (e.g., 'haircut', 'cleaning')"},
+                "description": {"type": "string", "description": "Detailed description of the request"},
+                "city": {"type": "string", "description": "City where service is needed"},
+                "budget_min": {"type": "number", "description": "Minimum budget in dollars"},
+                "budget_max": {"type": "number", "description": "Maximum budget in dollars"},
+                "timing": {"type": "string", "description": "When the service is needed"}
+            }
+        }
+    },
+    {
         "name": "create_service_request",
-        "description": "Create a service request AFTER user has approved the draft. This posts the request to find providers.",
+        "description": "Create a service request AFTER user has approved the draft. This posts the request to find providers. For budget, use provided values or sensible ranges.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -296,6 +315,42 @@ class ChatService:
         self.is_mock = self._is_mock_mode()
         # genai configuration removed, using llm_gateway
 
+    async def extract_information(self, message: str) -> dict:
+        """
+        Extract all structured information from user message.
+        Called BEFORE main agent response.
+        """
+        from src.platform.services.llm_gateway import llm_gateway
+        
+        try:
+            extraction_response = await llm_gateway.chat_completion(
+                messages=[{
+                    "role": "user",
+                    "content": EXTRACTION_PROMPT.format(message=message)
+                }],
+                # Using JSON mode helper if available, otherwise just parse text
+                max_tokens=500,
+                temperature=0,
+                use_cache=True # Enable cache for extraction too
+            )
+            
+            content = extraction_response.choices[0].message.content
+            # Clean up potential markdown formatting
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                 content = content.split("```")[1].split("```")[0].strip()
+            
+            extracted = json.loads(content)
+            # Filter out null values
+            return {k: v for k, v in extracted.items() if v is not None}
+        except Exception as e:
+            logger.error(f"Failed to extract information (skipping): {e}")
+            # If extraction fails, we still want to proceed with the main chat
+            # The agent will have to rely on the general history
+            return {}
+
+
     def _is_mock_mode(self) -> bool:
         return not settings.GOOGLE_API_KEY or settings.GOOGLE_API_KEY in ["", "your-gemini-api-key", "your-key-here"]
 
@@ -347,18 +402,12 @@ class ChatService:
 
     def _get_model_params(self, role: str, provider_id: Optional[UUID] = None) -> Tuple[str, List[Dict]]:
         """Get specialized model parameters based on role."""
-        prompt = CONSUMER_SYSTEM_PROMPT
+        # Note: Prompts are now dynamic and injected in handle_chat
+        prompt = CONSUMER_SYSTEM_PROMPT # Fallback
         tools = self._get_openai_tools(TOOL_DECLARATIONS)
         
-        if role == "provider" and provider_id:
-            provider_info = handlers.get_provider(provider_id)
-            if "error" not in provider_info:
-                prompt = PROVIDER_SYSTEM_PROMPT.format(
-                    provider_name=provider_info.get("name", "Provider"),
-                    provider_services=", ".join(provider_info.get("specializations", [])),
-                    provider_pricing="standard rates",
-                    provider_availability=str(provider_info.get("availability", "flexible"))
-                )
+        if role == "provider":
+            prompt = PROVIDER_SYSTEM_PROMPT
         elif role == "enrollment":
             prompt = ENROLLMENT_SYSTEM_PROMPT
             tools = self._get_openai_tools(ENROLLMENT_TOOL_DECLARATIONS)
@@ -438,7 +487,23 @@ class ChatService:
         # Load or create session
         session_id, session = self._get_or_create_session(session_id, role, provider_id) # Keep original order for now
         
+        # Check for role transition (Handoff)
+        is_handoff, handoff_msg = HandoffManager.check_handoff(
+            session, 
+            role, 
+            user_name=session["context"].get("consumer_profile", {}).get("name", "User")
+        )
+        
+        if is_handoff and handoff_msg:
+            # Inject system notice so the agent knows to welcome the user
+            # We add it as a system message at the end of history, or a user message from "System"
+            session["messages"].append({
+                "role": "system", 
+                "content": f"[SYSTEM EVENT]: {handoff_msg} (The user has upgraded/changed roles. Greet them accordingly.)"
+            })
+        
         # Hydrate context
+        session["context"]["session_id"] = session_id
         session["context"]["role"] = role
         session["context"]["consumer_id"] = consumer_id
         session["context"]["provider_id"] = provider_id
@@ -451,6 +516,16 @@ class ChatService:
             from src.platform.models.consumer import Consumer
             with SessionLocal() as db:
                 consumer = db.query(Consumer).filter(Consumer.clerk_id == clerk_id).first()
+                if not consumer and consumer_id:
+                    # Check if the guest record can be "claimed"
+                    guest_consumer = db.query(Consumer).filter(Consumer.id == UUID(str(consumer_id))).first()
+                    if guest_consumer and not guest_consumer.clerk_id:
+                        guest_consumer.clerk_id = clerk_id
+                        db.commit()
+                        db.refresh(guest_consumer)
+                        consumer = guest_consumer
+                        logger.info("guest_profile_claimed", clerk_id=clerk_id, consumer_id=consumer_id)
+                
                 if consumer:
                     session["context"]["consumer_profile"] = consumer.to_dict()
                 else:
@@ -460,6 +535,10 @@ class ChatService:
                     db.commit()
                     db.refresh(consumer)
                     session["context"]["consumer_profile"] = consumer.to_dict()
+                
+                # Update consumer_id context to match the claimed/found record's UUID
+                session["context"]["consumer_id"] = str(consumer.id)
+                consumer_id = str(consumer.id) # Sync local var
         elif consumer_id:
             # Fallback to consumer_id if clerk_id not provided
             from src.platform.database import SessionLocal
@@ -480,6 +559,34 @@ class ChatService:
         if enrollment_id:
             session["context"]["enrollment_id"] = str(enrollment_id)
         
+        # 2. Initialize context tracker
+        context_obj = ConversationContext(**session["context"])
+        
+        # Diagnostic: Log session state
+        messages = session.get("messages", [])
+        logger.info(
+            "chat_context_check",
+            session_id=session_id,
+            message_count=len(messages),
+            has_history=len(messages) > 0,
+            known_facts=context_obj.get_known_summary()
+        )
+        
+        # 3. Load profile into context if available
+        if "consumer_profile" in session["context"]:
+            context_obj.update_from_profile(session["context"]["consumer_profile"])
+        
+        # 4. Extract information from CURRENT message BEFORE responding
+        if message:
+            extracted = await self.extract_information(message)
+            if extracted:
+                context_obj.update_from_extraction(extracted, ContextSource.CURRENT_MESSAGE)
+                # Update legacy gathered_info for backward compatibility with some tools
+                session["context"]["gathered_info"] = {**session["context"].get("gathered_info", {}), **extracted}
+        
+        # Sync context_obj back to session dict
+        session["context"].update(context_obj.dict())
+
         # Handle workflow actions
         if action:
             return await self._handle_action(session_id, session, action)
@@ -548,23 +655,8 @@ class ChatService:
             if user_text:
                 content_list.append({"type": "text", "text": user_text})
             
-            # Setup System Prompt based on role
-            system_prompt = ""
-            if role == "consumer":
-                profile = session["context"].get("consumer_profile", {})
-                system_prompt = CONSUMER_SYSTEM_PROMPT.format(consumer_profile=json.dumps(profile))
-            elif role == "provider":
-                # Assuming provider name is something we have or can get
-                provider_name = session["context"].get("provider_name", "Provider")
-                system_prompt = PROVIDER_SYSTEM_PROMPT.format(provider_name=provider_name)
-            elif role == "enrollment":
-                system_prompt = ENROLLMENT_SYSTEM_PROMPT
-            else:
-                system_prompt = CONSUMER_SYSTEM_PROMPT.format(consumer_profile="{}")
-
-            # Add System Prompt at the beginning of sessions if not present
-            if not session["messages"] or session["messages"][0]["role"] != "system":
-                session["messages"].insert(0, {"role": "system", "content": system_prompt})
+            # System Prompt is handled by orchestrator, skip inserting into history here
+            # to avoid redundancy and conflicting context.
             
             # Add to session messages
             session["messages"].append({"role": "user", "content": content_list})
@@ -580,7 +672,7 @@ class ChatService:
             response_text, final_lc_msgs, final_context = await proxie_orchestrator.run(
                 messages=lc_messages,
                 context=session["context"],
-                user_id=clerk_id,
+                user_id=clerk_id or consumer_id or provider_id,
                 session_id=session_id,
                 role=role
             )
@@ -588,6 +680,11 @@ class ChatService:
             # Sync back context and history
             session["context"] = final_context
             session["messages"] = self._from_lc_msgs(final_lc_msgs)
+            
+            # Auto-save relevant info to profile
+            if role == "consumer" and (clerk_id or consumer_id):
+                 # re-instantiate context to use update logic if needed, but for now just direct save
+                 await self._auto_save_consumer_profile(session["context"], clerk_id or consumer_id)
             
             # Structured data and UI hints (legacy support)
             # Find any tool results in history to pull structured data
@@ -614,14 +711,19 @@ class ChatService:
             if "tool_executor" in session["context"]:
                 del session["context"]["tool_executor"]
 
-            # Save session to Redis
+            # Save session
             session_manager.save_session(session_id, session)
             
             return session_id, response_text, structured_data, draft, awaiting_approval
             
         except Exception as e:
-            logger.error(f"Error in handle_chat: {str(e)}")
-            return session_id, "I'm sorry, I'm having trouble processing that right now. Could you try again?", None, None, False
+            logger.exception("Error in handle_chat")
+            # Re-raise so controller can handle with proper status codes
+            # or include error info in message for tests/UI
+            error_msg = str(e)
+            if "limit exceeded" in error_msg.lower():
+                return session_id, "LLM usage limit exceeded for this session/day.", None, None, False
+            return session_id, f"Error: {error_msg}", None, None, False
 
     async def _handle_action(
         self, 
@@ -767,23 +869,107 @@ class ChatService:
                 # Merge media
                 media = context.get("media", [])
                 
+                # Normalize location to dict if it's a string
+                location = info.get("location")
+                if isinstance(location, str):
+                    location = {"city": location}
+                elif not location:
+                    location = {"city": info.get("city") or "Unknown"}
+                
+                # Normalize budget
+                budget = info.get("budget")
+                if not budget:
+                    budget = {
+                        "min": info.get("budget_min") or 0,
+                        "max": info.get("budget_max") or 100
+                    }
+
                 return DraftRequest(
                     service_type=info.get("service_type") or info.get("service_subtype") or "Service",
                     service_category="hair" if "hair" in lower else "general",
                     description=info.get("description", ""),
-                    details={k: v for k, v in info.items() if k not in ["service_type", "service_subtype", "description", "location", "budget", "timing"]},
-                    location=info.get("location", {"city": "Unknown"}),
-                    budget=info.get("budget", {"min": 0, "max": 100}),
+                    details={k: v for k, v in info.items() if k not in ["service_type", "service_subtype", "description", "location", "budget", "timing", "budget_min", "budget_max", "city", "address"]},
+                    location=location,
+                    budget=budget,
                     timing=info.get("timing"),
                     media=media,
-                    specialist_notes=analysis.notes if analysis else None
+                    specialist_notes=analysis.notes if hasattr(analysis, 'notes') else (analysis.get('notes') if isinstance(analysis, dict) else None)
                 )
         return None
 
     async def _execute_tool(self, name: str, params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a tool/function and return results."""
         try:
-            if name == "create_service_request":
+            cid = context.get("consumer_id")
+            consumer_uuid = UUID(cid) if cid else None
+
+            if name == "recall_preferences":
+                if not consumer_uuid:
+                    return {"error": "No user identity found"}
+                from src.platform.database import SessionLocal
+                with SessionLocal() as db:
+                    mem_service = MemoryService(db)
+                    ctx = await mem_service.get_consumer_context(consumer_uuid)
+                    memory = ctx.get("memory")
+                    
+                    # Check explicit
+                    exp_key = f"preferred_{params.get('key')}"
+                    if hasattr(memory, exp_key) and getattr(memory, exp_key):
+                        return {"preference": getattr(memory, exp_key), "source": "explicit"}
+                    
+                    # Check learned
+                    learned = getattr(memory, "learned_preferences", {}) or {}
+                    if params.get('key') in learned:
+                         return {"preference": learned[params.get('key')], "source": "learned"}
+                         
+                    return {"message": "No specific preference found for this."}
+                
+            elif name == "update_preferences":
+                if not consumer_uuid:
+                    return {"error": "No user identity found"}
+                
+                # Just call update_consumer_memory with a special interaction type
+                interaction = {
+                    "session_id": context.get("session_id"),
+                    "type": "explicit_preference_update",
+                    "input": "User updated preferences via tool",
+                    "output": "Preferences updated",
+                    "tools": [{"name": "update_preferences", "args": params}],
+                    "outcome": "success"
+                }
+                
+                from src.platform.database import SessionLocal
+                with SessionLocal() as db:
+                    mem_service = MemoryService(db)
+                    await mem_service.update_consumer_memory(consumer_uuid, interaction)
+                return {"status": "success", "message": "Preferences updated"}
+            
+            elif name == "get_booking_history":
+                if not consumer_uuid:
+                    return {"error": "No user identity found"}
+                
+                from src.platform.database import SessionLocal
+                with SessionLocal() as db:
+                    mem_service = MemoryService(db)
+                    ctx = await mem_service.get_consumer_context(consumer_uuid)
+                    bookings = ctx.get("recent_bookings", [])
+                    
+                return {
+                    "bookings": [
+                        {
+                            "id": str(b.id),
+                            "service": b.service_id, 
+                            "date": b.created_at.strftime('%Y-%m-%d'),
+                            "status": b.status
+                        } for b in bookings
+                    ]
+                }
+            
+            elif name == "suggest_providers":
+                 # Mock implementation for now until search service is upgraded
+                 return {"suggestions": ["Provider A (High Rating)", "Provider B (Good Price)"]}
+
+            elif name == "create_service_request":
                 # Resolve Internal UUID for database
                 # Prefer UUID from profile (linked via clerk_id earlier in handle_chat)
                 internal_id = None
@@ -837,6 +1023,32 @@ class ChatService:
                 
                 return result
                 
+            elif name == "update_request_details":
+                gathered = context.get("gathered_info", {})
+                for key, value in params.items():
+                    if value:
+                        if key == "city":
+                            gathered["location"] = gathered.get("location", {})
+                            if isinstance(gathered["location"], dict):
+                                gathered["location"]["city"] = value
+                        elif key in ["budget_min", "budget_max"]:
+                            gathered["budget"] = gathered.get("budget", {})
+                            if isinstance(gathered["budget"], dict):
+                                b_key = "min" if key == "budget_min" else "max"
+                                gathered["budget"][b_key] = value
+                        else:
+                            gathered[key] = value
+                
+                context["gathered_info"] = gathered
+                
+                # Create a human-readable summary of what was updated
+                updates = [k for k, v in params.items() if v]
+                msg = f"Successfully updated request details: {', '.join(updates)}. "
+                if 'city' in updates: msg += f"Location set to {params['city']}. "
+                msg += "Context is saved. DO NOT ask the user for these details again."
+                
+                return {"status": "success", "message": msg, "gathered_info": gathered}
+                
             elif name == "get_offers":
                 request_id = params.get("request_id") or context.get("current_request_id")
                 if request_id:
@@ -853,6 +1065,59 @@ class ChatService:
                         "start_time": params["slot_start_time"]
                     }
                 )
+            
+            elif name == "get_my_leads":
+                # Mock leads
+                return {
+                    "leads": [
+                        {
+                            "id": str(uuid.uuid4()),
+                            "service_type": "Haircut",
+                            "description": "Fade and trim",
+                            "budget": 60,
+                            "location": "Downtown",
+                            "created_at": "2026-01-28 10:00:00",
+                            "match_score": 0.9
+                        }
+                    ]
+                }
+                
+            elif name == "suggest_offer":
+                provider_id = params.get("provider_id") or context.get("provider_id")
+                if not provider_id:
+                     return {"error": "Provider ID required"}
+                     
+                # Get pricing history
+                history_price = 80 # Default
+                try:
+                    ctx = await self.memory_service.get_provider_context(UUID(provider_id))
+                    # Basic logic: avg of last 5 offers
+                    recent = ctx.get("recent_offers", [])
+                    if recent:
+                        prices = [float(o.price) for o in recent if o.price]
+                        if prices:
+                            history_price = sum(prices) / len(prices)
+                except Exception as e:
+                    logger.warning("Failed to get pricing history", error=str(e))
+                
+                return {
+                    "suggestion": {
+                        "price": history_price,
+                        "rationale": f"Based on your history (avg ${history_price}) and market rates.",
+                        "message": "I'd love to help you with this!"
+                    }
+                }
+                
+            elif name == "draft_offer":
+                return {
+                    "draft": {
+                        "id": str(uuid.uuid4()),
+                        "status": "draft",
+                        "price": params.get("price"),
+                        "message": params.get("message")
+                    },
+                    "message": "Draft created! Review above."
+                }
                 
             elif name == "get_service_catalog":
                 from src.platform.services.catalog import catalog_service
@@ -1084,7 +1349,32 @@ class ChatService:
                     message=message
                 )
             
-            return {"error": f"Unknown function: {name}"}
+            
+
+            
+            elif name == "request_quotes_from_agents":
+                from src.platform.services.a2a_protocol import a2a_protocol
+                
+                # Extract params
+                provider_ids = params.get("provider_ids", [])
+                request_details = params.get("request_details", context.get("gathered_info", {}))
+                
+                # Call Protocol
+                # Note: In production, this would be async/background. For MVP, we await.
+                try:
+                    quotes = await a2a_protocol.request_quotes(request_details, provider_ids)
+                    return {
+                        "status": "success",
+                        "count": len(quotes),
+                        "quotes": quotes,
+                        "summary": f"Received {len(quotes)} quotes from providers."
+                    }
+                except Exception as e:
+                    logger.error("Failed to request quotes", error=str(e))
+                    return {"error": "Failed to negotiate with agents."}
+
+            else:
+                return {"error": f"Unknown function: {name}"}
             
         except Exception as e:
             logger.error(f"Error executing tool {name}: {str(e)}")
@@ -1104,6 +1394,8 @@ class ChatService:
             data["ui_hint"] = "compare_offers"
         elif function_name == "get_consumer_profile" or function_name == "update_consumer_profile":
             data["consumer_profile"] = result
+        elif function_name == "update_request_details":
+            data["gathered_info"] = result.get("gathered_info")
         elif function_name == "create_service_request":
             data["request_id"] = result.get("request_id")
             data["ui_hint"] = "request_created"
@@ -1243,6 +1535,41 @@ class ChatService:
         else:
             return "Hi! I'm Proxie. Ready to help you manage your business. 📋 Would you like to see your new leads?", None
 
+
+    async def _auto_save_consumer_profile(self, context_dict: Dict, consumer_id_or_clerk: str):
+        """Automatically save relevant extracted info to user profile."""
+        from src.platform.database import SessionLocal
+        from src.platform.models.consumer import Consumer
+        from uuid import UUID
+        
+        try:
+            with SessionLocal() as db:
+                # Try to find by UUID first (internal id)
+                try:
+                    target_id = UUID(consumer_id_or_clerk)
+                    consumer = db.query(Consumer).filter(Consumer.id == target_id).first()
+                except (ValueError, TypeError):
+                    # Fallback to clerk_id
+                    consumer = db.query(Consumer).filter(Consumer.clerk_id == consumer_id_or_clerk).first()
+                
+                if consumer:
+                    # Update name if missing
+                    if context_dict.get("name") and not consumer.name:
+                        consumer.name = context_dict["name"]
+                    
+                    # Update location if missing
+                    if context_dict.get("city") and not consumer.default_location:
+                        consumer.default_location = {"city": context_dict["city"]}
+                    
+                    # Merge preferences
+                    if context_dict.get("preferences"):
+                        existing = consumer.preferences or {}
+                        consumer.preferences = {**existing, **context_dict["preferences"]}
+                    
+                    db.commit()
+                    logger.info("consumer_profile_autosaved", consumer_id=str(consumer.id))
+        except Exception as e:
+            logger.error(f"Failed to auto-save consumer profile: {e}")
 
 # Global service instance
 chat_service = ChatService()

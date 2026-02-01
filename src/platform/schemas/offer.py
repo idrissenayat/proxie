@@ -1,7 +1,7 @@
 from datetime import date, datetime, time
 from typing import List, Optional
 from uuid import UUID
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, ConfigDict
 
 # --- Sub-models ---
 
@@ -36,8 +36,7 @@ class OfferResponse(OfferCreate):
     status: str
     provider_snapshot: Optional[ProviderSnapshot] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class OfferUpdate(BaseModel):
     status: Optional[str] = None

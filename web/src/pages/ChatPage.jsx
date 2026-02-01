@@ -25,21 +25,33 @@ const ChatPage = () => {
     const providerId = query.get('provider_id') || location.state?.providerId;
     const initialMessage = query.get('initial');
 
-    const [messages, setMessages] = useState([
-        {
+    const [messages, setMessages] = useState(() => {
+        // If we have an auto-send message, start empty to avoid clutter/duplication
+        if (initialMessage) return [];
+
+        if (role === 'consumer') {
+            return [{
+                id: 'init',
+                role: 'assistant',
+                content: "Hi! I'm Proxie, your personal agent for finding skilled service providers. What can I help you with today?"
+            }];
+        }
+        if (role === 'enrollment') {
+            // Enrollment starts fresh
+            return [];
+        }
+        return [{
             id: 'init',
             role: 'assistant',
-            content: role === 'consumer'
-                ? "Hi! I'm Proxie, your personal agent for finding skilled service providers. What can I help you with today?"
-                : "Hi! I'm Proxie. I'm ready to help you manage your business. Would you like to see your new leads or manage active offers?"
-        }
-    ]);
+            content: "Hi! I'm Proxie. I'm ready to help you manage your business. Would you like to see your new leads or manage active offers?"
+        }];
+    });
+
     const [input, setInput] = useState('');
     const [isThinking, setIsThinking] = useState(false);
     const [isListening, setIsListening] = useState(false);
     const [isVoiceOutputEnabled, setIsVoiceOutputEnabled] = useState(false);
     const [sessionId, setSessionId] = useState(null);
-    const [hasSentInitial, setHasSentInitial] = useState(false);
     const [selectedMedia, setSelectedMedia] = useState([]);
     const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
     const [showCamera, setShowCamera] = useState(false);
@@ -55,6 +67,9 @@ const ChatPage = () => {
     const messagesEndRef = useRef(null);
     const recognitionRef = useRef(null);
 
+    // Check for initialization to prevent double-firing
+    const hasInitialized = useRef(false);
+
     // Auto-scroll
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -62,33 +77,35 @@ const ChatPage = () => {
 
     // Handle initial message from URL or state (contextual leads/edits)
     useEffect(() => {
+        if (hasInitialized.current) return;
+
         const targetLead = location.state?.targetLead;
         const editRequest = location.state?.edit_request;
         const bookProvider = location.state?.book_provider;
 
-        if (targetLead && !hasSentInitial && role === 'provider') {
-            setHasSentInitial(true);
+        if (targetLead && role === 'provider') {
+            hasInitialized.current = true;
             const contextMsg = `Tell me about lead ${targetLead}`;
             setTimeout(() => handleSend(contextMsg), 500);
             return;
         }
 
-        if (editRequest && !hasSentInitial) {
-            setHasSentInitial(true);
+        if (editRequest) {
+            hasInitialized.current = true;
             const contextMsg = `I want to edit my request for ${editRequest.service_type}. Here are the current details: ${editRequest.raw_input}`;
             setTimeout(() => handleSend(contextMsg), 500);
             return;
         }
 
-        if (bookProvider && !hasSentInitial) {
-            setHasSentInitial(true);
+        if (bookProvider) {
+            hasInitialized.current = true;
             const contextMsg = `I want to book ${bookProvider.name} for ${bookProvider.specializations?.[0] || 'service'}`;
             setTimeout(() => handleSend(contextMsg), 500);
             return;
         }
 
-        if (initialMessage && !hasSentInitial) {
-            setHasSentInitial(true);
+        if (initialMessage) {
+            hasInitialized.current = true;
 
             // Handle enrollment initialization
             if (role === 'enrollment') {
@@ -113,7 +130,7 @@ const ChatPage = () => {
                 setTimeout(() => handleSend(initialMessage), 500);
             }
         }
-    }, [initialMessage, hasSentInitial, location.state]);
+    }, [initialMessage, location.state, role]);
 
     // Speech Recognition Setup
     useEffect(() => {

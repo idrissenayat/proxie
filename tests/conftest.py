@@ -3,15 +3,34 @@ Pytest configuration and fixtures.
 """
 
 import pytest
+import os
+
+# Set environment to testing for all tests (matches auth bypass)
+os.environ["ENVIRONMENT"] = "testing"
+os.environ["CELERY_TASK_ALWAYS_EAGER"] = "True" # Ensure tasks run immediately in tests
+
 from fastapi.testclient import TestClient
 
 from src.platform.main import app
+from src.platform.config import settings
 
 
 @pytest.fixture
 def client():
     """Test client for API testing."""
     return TestClient(app)
+
+
+@pytest.fixture
+def authed_client():
+    """Test client that bypasses authentication."""
+    c = TestClient(app)
+    c.headers.update({
+        "X-Load-Test-Secret": settings.LOAD_TEST_SECRET,
+        "X-Test-User-Id": "550e8400-e29b-41d4-a716-446655440000",
+        "X-Test-User-Role": "consumer"
+    })
+    return c
 
 
 @pytest.fixture

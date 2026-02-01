@@ -8,6 +8,7 @@ import json
 import hashlib
 import redis
 import litellm
+from litellm.utils import ModelResponse
 import structlog
 from typing import List, Dict, Any, Optional
 from src.platform.config import settings
@@ -38,15 +39,81 @@ class LLMGateway:
         self.primary_model = f"{settings.LLM_PRIMARY_PROVIDER}/{settings.LLM_PRIMARY_MODEL}"
         self.fallback_model = f"{settings.LLM_FALLBACK_PROVIDER}/{settings.LLM_FALLBACK_MODEL}"
 
-    def _get_cache_key(self, model: str, messages: List[Dict], tools: Optional[List] = None) -> str:
+    def _normalize_messages(self, messages: List[Dict]) -> List[Dict]:
+        """Normalize messages for consistent cache key generation."""
+        normalized = []
+        for msg in messages:
+            # Remove timestamp fields, keep only content
+            normalized_msg = {
+                "role": msg.get("role"),
+                "content": msg.get("content"),
+            }
+            # Include tool_calls if present
+            if "tool_calls" in msg:
+                normalized_msg["tool_calls"] = msg["tool_calls"]
+            normalized.append(normalized_msg)
+        return normalized
+    
+    def _get_cache_key(
+        self,
+        model: str,
+        messages: List[Dict],
+        tools: Optional[List] = None,
+        user_id: Optional[str] = None
+    ) -> str:
         """Generate a deterministic cache key for given inputs."""
+        # Normalize messages for consistent hashing
+        normalized_messages = self._normalize_messages(messages)
+        
         key_data = {
             "model": model,
-            "messages": messages,
-            "tools": tools
+            "messages": normalized_messages,
+            "tools": tools,
+            "user_id": user_id  # Include user_id for personalization
         }
-        hash_val = hashlib.md5(json.dumps(key_data, sort_keys=True).encode()).hexdigest()
+        def uuid_convert(obj):
+            if isinstance(obj, UUID):
+                return str(obj)
+            raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
+
+        # Use SHA256 for better distribution
+        from uuid import UUID
+        hash_val = hashlib.sha256(json.dumps(key_data, sort_keys=True, default=uuid_convert).encode()).hexdigest()
         return f"llm_cache:{hash_val}"
+    
+    def invalidate_cache(self, pattern: Optional[str] = None) -> int:
+        """
+        Invalidate LLM cache entries.
+        
+        Args:
+            pattern: Optional pattern to match (e.g., "llm_cache:*user_123*")
+                    If None, invalidates all LLM cache entries.
+        
+        Returns:
+            Number of keys deleted
+        """
+        if not self.cache_enabled or not self.redis_client:
+            return 0
+        
+        try:
+            pattern = pattern or "llm_cache:*"
+            keys = self.redis_client.keys(pattern)
+            if keys:
+                return self.redis_client.delete(*keys)
+            return 0
+        except Exception as e:
+            logger.error("Cache invalidation error", pattern=pattern, error=str(e))
+            return 0
+    
+    def invalidate_user_cache(self, user_id: str) -> int:
+        """Invalidate all cache entries for a specific user."""
+        # Note: This requires scanning all keys, which is inefficient
+        # For better performance, consider using Redis sets to track user cache keys
+        return self.invalidate_cache(f"llm_cache:*{user_id}*")
+    
+    def invalidate_session_cache(self, session_id: str) -> int:
+        """Invalidate all cache entries for a specific session."""
+        return self.invalidate_cache(f"llm_cache:*session_{session_id}*")
 
     async def chat_completion(
         self,
@@ -74,14 +141,13 @@ class LLMGateway:
         # 1. Try Cache
         cache_key = None
         if use_cache and self.cache_enabled and self.redis_client:
-            cache_key = self._get_cache_key(target_model, messages, tools)
+            cache_key = self._get_cache_key(target_model, messages, tools, user_id)
             try:
                 cached = self.redis_client.get(cache_key)
                 if cached:
                     logger.info("LLM Cache Hit", model=target_model)
                     # Use LiteLLM's own response object if possible, or a simple mock
                     try:
-                        from litellm.utils import ModelResponse
                         return ModelResponse(**json.loads(cached))
                     except:
                         # Fallback to a simple dot-accessible dict
@@ -102,12 +168,9 @@ class LLMGateway:
                 logger.error("Redis read error", error=str(e))
 
         # 1.5 Mock Mode Check
-        is_mock = not settings.GOOGLE_API_KEY or settings.GOOGLE_API_KEY in ["", "your-gemini-api-key", "your-key-here"]
+        is_mock = settings.ENVIRONMENT in ["test", "testing"] or not settings.GOOGLE_API_KEY or settings.GOOGLE_API_KEY in ["", "your-gemini-api-key", "your-key-here"]
         if is_mock:
             logger.info("LLM Mock Mode Enabled", model=target_model)
-            from litellm.utils import ModelResponse
-            import json
-            
             # Check if we just finished a tool call
             last_msg = messages[-1] if messages else {}
             if last_msg.get("role") == "tool":

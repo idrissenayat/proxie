@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -33,17 +33,8 @@ function ChatContent() {
     const rebookId = searchParams.get('rebook');
     const requestId = searchParams.get('request_id');
 
-    const [messages, setMessages] = useState([
-        {
-            id: 'init',
-            role: 'assistant',
-            content: role === 'consumer'
-                ? "Hi! I'm Proxie, your personal agent for finding skilled service providers. What can I help you with today?"
-                : role === 'enrollment'
-                    ? "Hi! I'm Proxie. I'm ready to help you enroll as a provider. Let's start by getting to know you and your business!"
-                    : "Hi! I'm Proxie. I'm ready to help you manage your business. Would you like to see your new leads or manage active offers?"
-        }
-    ]);
+    const [messages, setMessages] = useState([]);
+    const initialMessageAddedRef = useRef(false);
     const [input, setInput] = useState('');
     const [isThinking, setIsThinking] = useState(false);
     const [isListening, setIsListening] = useState(false);
@@ -62,6 +53,35 @@ function ChatContent() {
     const videoInputRef = useRef(null);
     const messagesEndRef = useRef(null);
     const recognitionRef = useRef(null);
+    const processingRequestRef = useRef(null);
+
+    // Add initial greeting message (only once, even with React Strict Mode)
+    useEffect(() => {
+        if (initialMessageAddedRef.current) return;
+        
+        const storageKey = `proxie_greeting_added_${role}`;
+        if (typeof window !== 'undefined' && sessionStorage.getItem(storageKey)) {
+            initialMessageAddedRef.current = true;
+            return;
+        }
+        
+        initialMessageAddedRef.current = true;
+        if (typeof window !== 'undefined') {
+            sessionStorage.setItem(storageKey, 'true');
+        }
+        
+        const greeting = role === 'consumer'
+            ? "Hi! I'm Proxie, your personal agent for finding skilled service providers. What can I help you with today?"
+            : role === 'enrollment'
+                ? "Hi! I'm Proxie. I'm ready to help you enroll as a provider. Let's start by getting to know you and your business!"
+                : "Hi! I'm Proxie. I'm ready to help you manage your business. Would you like to see your new leads or manage active offers?";
+        
+        setMessages([{
+            id: 'init',
+            role: 'assistant',
+            content: greeting
+        }]);
+    }, [role]);
 
     // Auto-scroll
     useEffect(() => {
@@ -72,26 +92,44 @@ function ChatContent() {
     useEffect(() => {
         const socket = initSocket();
 
-        socket.on('new_message', (data) => {
+        const handleNewMessage = (data) => {
             console.log('Socket new_message received:', data.message?.substring(0, 50));
-        });
+        };
 
-        socket.on('session_ready', (data) => {
+        const handleSessionReady = (data) => {
             setSessionId(data.session_id);
-        });
+        };
+
+        socket.on('new_message', handleNewMessage);
+        socket.on('session_ready', handleSessionReady);
 
         return () => {
+            // Clean up socket listeners
+            socket.off('new_message', handleNewMessage);
+            socket.off('session_ready', handleSessionReady);
         };
     }, []);
 
     // Handle initial message and context
     useEffect(() => {
-        if (hasSentInitialRef.current) return;
+        // Prevent duplicate execution using both ref and sessionStorage (for React Strict Mode)
+        const storageKey = `proxie_initial_sent_${role}_${initialMessage}_${rebookId}_${requestId}`;
+        if (hasSentInitialRef.current || (typeof window !== 'undefined' && sessionStorage.getItem(storageKey))) {
+            return;
+        }
 
         const processInitial = async () => {
+            // Double-check to prevent race conditions
+            if (hasSentInitialRef.current || (typeof window !== 'undefined' && sessionStorage.getItem(storageKey))) {
+                return;
+            }
+            hasSentInitialRef.current = true;
+            if (typeof window !== 'undefined') {
+                sessionStorage.setItem(storageKey, 'true');
+            }
+
             if (role === 'enrollment') {
                 try {
-                    hasSentInitialRef.current = true;
                     const res = await startEnrollment();
                     const id = res.data.enrollment_id;
                     setEnrollmentId(id);
@@ -107,24 +145,24 @@ function ChatContent() {
                 } catch (e) {
                     console.error("Enrollment init error", e);
                     hasSentInitialRef.current = false;
+                    if (typeof window !== 'undefined') {
+                        sessionStorage.removeItem(storageKey);
+                    }
                 }
                 return;
             }
 
             if (rebookId) {
-                hasSentInitialRef.current = true;
                 handleSend(`I want to rebook the previous service (Booking ID: ${rebookId})`);
                 return;
             }
 
             if (requestId && role === 'provider') {
-                hasSentInitialRef.current = true;
                 handleSend(`Tell me about lead ${requestId}`);
                 return;
             }
 
             if (initialMessage) {
-                hasSentInitialRef.current = true;
                 if (typeof window !== 'undefined') {
                     const savedMedia = sessionStorage.getItem('proxie_initial_media');
                     if (savedMedia) {
@@ -140,7 +178,7 @@ function ChatContent() {
         };
 
         processInitial();
-    }, [initialMessage, role, rebookId, requestId]);
+    }, [initialMessage, role, rebookId, requestId, handleSend]);
 
     // Speech Recognition Setup
     useEffect(() => {
@@ -149,17 +187,51 @@ function ChatContent() {
             const recognition = new SpeechRecognition();
             recognition.continuous = false;
             recognition.lang = 'en-US';
-            recognition.onresult = (event) => {
+            
+            let hasProcessedResult = false;
+            
+            const handleResult = (event) => {
+                // Prevent duplicate processing
+                if (hasProcessedResult) return;
+                hasProcessedResult = true;
+                
                 const transcript = event.results[0][0].transcript;
                 setInput(transcript);
                 handleSend(transcript);
                 setIsListening(false);
             };
-            recognition.onerror = () => setIsListening(false);
-            recognition.onend = () => setIsListening(false);
+            
+            const handleError = () => {
+                setIsListening(false);
+                hasProcessedResult = false;
+            };
+            
+            const handleEnd = () => {
+                setIsListening(false);
+                hasProcessedResult = false;
+            };
+            
+            recognition.onresult = handleResult;
+            recognition.onerror = handleError;
+            recognition.onend = handleEnd;
             recognitionRef.current = recognition;
+            
+            return () => {
+                // Clean up recognition
+                if (recognitionRef.current) {
+                    recognitionRef.current.onresult = null;
+                    recognitionRef.current.onerror = null;
+                    recognitionRef.current.onend = null;
+                    try {
+                        recognitionRef.current.stop();
+                    } catch (e) {
+                        // Ignore errors when stopping
+                    }
+                    recognitionRef.current = null;
+                }
+            };
         }
-    }, []);
+    }, [handleSend]);
 
     const toggleListening = () => {
         if (isListening) {
@@ -179,11 +251,47 @@ function ChatContent() {
         synth.speak(utterance);
     };
 
-    const handleSend = async (customText = null, action = null, activeEnrollmentId = enrollmentId, initialMedia = null) => {
+    const handleSend = useCallback(async (customText = null, action = null, activeEnrollmentId = enrollmentId, initialMedia = null) => {
+        // Prevent duplicate sends with multiple guards
+        if (isThinking) {
+            console.warn('Already processing a message, ignoring duplicate send');
+            return;
+        }
+
         const text = customText !== null ? customText : input;
         const mediaToUse = initialMedia || selectedMedia;
 
         if (!text.trim() && mediaToUse.length === 0 && !action) return;
+
+        // Create a unique fingerprint for this request
+        const requestFingerprint = `${text.substring(0, 50)}_${action || 'none'}_${mediaToUse.length}`;
+        const requestKey = `proxie_request_${requestFingerprint}`;
+        
+        // Check if this exact request was already sent (within last 3 seconds)
+        if (typeof window !== 'undefined') {
+            const recentRequest = sessionStorage.getItem(requestKey);
+            if (recentRequest) {
+                const timeDiff = Date.now() - parseInt(recentRequest);
+                if (timeDiff < 3000) { // Within 3 seconds
+                    console.warn('Duplicate request detected (within 3s), ignoring', { text: text.substring(0, 30), timeDiff });
+                    return;
+                }
+            }
+            // Mark this request as sent
+            sessionStorage.setItem(requestKey, Date.now().toString());
+            // Clean up after 10 seconds
+            setTimeout(() => sessionStorage.removeItem(requestKey), 10000);
+        }
+
+        // Also check processing ref
+        if (processingRequestRef.current === requestFingerprint) {
+            console.warn('Duplicate request in processing ref, ignoring');
+            return;
+        }
+        processingRequestRef.current = requestFingerprint;
+
+        // Set thinking state immediately to prevent duplicates
+        setIsThinking(true);
 
         const mediaToUpload = mediaToUse.map(m => ({
             type: m.type,
@@ -203,7 +311,6 @@ function ChatContent() {
         setMessages(prev => [...prev, userMsg]);
         setInput('');
         setSelectedMedia([]);
-        setIsThinking(true);
 
         try {
             const response = await sendChatMessage({
@@ -252,8 +359,14 @@ function ChatContent() {
             }]);
         } finally {
             setIsThinking(false);
+            // Clear processing ref after a delay to allow for rapid legitimate requests
+            setTimeout(() => {
+                if (processingRequestRef.current === requestFingerprint) {
+                    processingRequestRef.current = null;
+                }
+            }, 1000);
         }
-    };
+    }, [isThinking, input, selectedMedia, sessionId, role, providerId, enrollmentId]);
 
     const renderData = (data, draft, isUser) => {
         if (!data && !draft) return null;

@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from src.platform.services.rate_limiter import get_user_id_for_rate_limit
 import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from opentelemetry import trace
@@ -47,28 +48,82 @@ if settings.SENTRY_DSN:
     )
 
 # Setup OpenTelemetry
-resource = Resource(attributes={SERVICE_NAME: "proxie-api"})
-provider = TracerProvider(resource=resource)
-processor = BatchSpanProcessor(OTLPSpanExporter(endpoint=settings.OTEL_EXPORTER_OTLP_ENDPOINT))
-provider.add_span_processor(processor)
-trace.set_tracer_provider(provider)
+if settings.ENVIRONMENT not in ["test", "testing"]:
+    resource = Resource(attributes={SERVICE_NAME: "proxie-api"})
+    provider = TracerProvider(resource=resource)
+    processor = BatchSpanProcessor(OTLPSpanExporter(endpoint=settings.OTEL_EXPORTER_OTLP_ENDPOINT))
+    provider.add_span_processor(processor)
+    trace.set_tracer_provider(provider)
 
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-# Initialize rate limiter
-limiter = Limiter(key_func=get_remote_address)
+# Initialize rate limiter with user-based key function
+limiter = Limiter(key_func=get_user_id_for_rate_limit)
 
-app = FastAPI(
+fastapi_app = FastAPI(
     title="Proxie API",
     description="""
-Agent-native platform for skilled service providers.
+# Proxie API Documentation
+
+Agent-native platform connecting skilled service providers with consumers through AI-powered matching and communication.
 
 ## Features
-* **AI-First Concierge**: Conversational request creation.
-* **Smart Matching**: Automated provider discovery.
-* **Real-time Communication**: WebSocket-based chat.
-* **Secure Payments**: (Upcoming) Integrated booking and payouts.
+
+* **AI-First Concierge**: Conversational request creation with natural language processing
+* **Smart Matching**: Automated provider discovery using semantic search and embeddings
+* **Real-time Communication**: WebSocket-based chat for instant messaging
+* **Provider Enrollment**: Streamlined onboarding process for new providers
+* **Booking Management**: End-to-end booking workflow from request to completion
+* **Review System**: Rating and review system for quality assurance
+
+## Authentication
+
+Proxie uses **Clerk** for authentication. Include a JWT token in the Authorization header:
+
+```
+Authorization: Bearer <your-jwt-token>
+```
+
+### User Roles
+
+- **consumer**: Service requesters
+- **provider**: Service providers
+- **admin**: Platform administrators
+
+## Rate Limiting
+
+Rate limits are enforced per user (authenticated) or per IP (unauthenticated). Rate limit headers are included in all responses:
+
+- `X-RateLimit-Limit`: Maximum requests allowed
+- `X-RateLimit-Remaining`: Remaining requests in current window
+- `X-RateLimit-Reset`: Unix timestamp when limit resets
+
+When rate limit is exceeded, a `429 Too Many Requests` response is returned with a `Retry-After` header.
+
+## Error Responses
+
+All errors follow a consistent format:
+
+```json
+{
+  "detail": "Error message",
+  "rate_limit": {
+    "limit": 60,
+    "remaining": 0,
+    "reset": 1706457600
+  }
+}
+```
+
+## Base URL
+
+- **Production**: `https://api.proxie.app`
+- **Development**: `http://localhost:8000`
+
+## OpenAPI Specification
+
+This API follows the OpenAPI 3.0 specification. The full schema is available at `/openapi.json`.
 """,
     version="0.12.0",
     terms_of_service="https://proxie.app/terms/",
@@ -81,20 +136,59 @@ Agent-native platform for skilled service providers.
         "name": "Proprietary",
         "url": "https://proxie.app/license",
     },
+    openapi_tags=[
+        {
+            "name": "requests",
+            "description": "Service request management. Consumers create requests, providers view and respond to them.",
+        },
+        {
+            "name": "providers",
+            "description": "Provider profile and service management. Providers can manage their profile, services, and portfolio.",
+        },
+        {
+            "name": "offers",
+            "description": "Offer management. Providers create offers in response to requests, consumers accept them.",
+        },
+        {
+            "name": "bookings",
+            "description": "Booking management. Track and manage confirmed appointments.",
+        },
+        {
+            "name": "reviews",
+            "description": "Review and rating system. Consumers can leave reviews after completed bookings.",
+        },
+        {
+            "name": "chat",
+            "description": "AI-powered chat interface. Conversational interaction with Proxie AI agents.",
+        },
+        {
+            "name": "enrollment",
+            "description": "Provider enrollment process. New providers can sign up and get verified.",
+        },
+        {
+            "name": "consumers",
+            "description": "Consumer profile management.",
+        },
+        {
+            "name": "media",
+            "description": "Media upload and management. Upload photos and files for requests and portfolios.",
+        },
+    ],
 )
 
-# Add rate limiter to app state
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# Add rate limiter to fastapi_app state
+fastapi_app.state.limiter = limiter
+fastapi_app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Instrument FastAPI with OpenTelemetry
-FastAPIInstrumentor.instrument_app(app)
+if settings.ENVIRONMENT not in ["test", "testing"]:
+    FastAPIInstrumentor.instrument_app(fastapi_app)
 
 # Instrument with Prometheus metrics
-Instrumentator().instrument(app).expose(app)
+Instrumentator().instrument(fastapi_app).expose(fastapi_app)
 
 # CORS middleware - Use configured origins
-app.add_middleware(
+fastapi_app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
@@ -103,8 +197,13 @@ app.add_middleware(
 )
 
 
+# Rate limiting middleware (if enabled)
+if settings.RATE_LIMIT_ENABLED:
+    from src.platform.middleware.rate_limit import RateLimitMiddleware
+    fastapi_app.add_middleware(RateLimitMiddleware)
+
 # Security headers middleware
-@app.middleware("http")
+@fastapi_app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     # Skip for WebSocket requests as it can cause issues with Starlette's BaseHTTPMiddleware
     if request.scope.get("type") == "websocket":
@@ -120,7 +219,7 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
-@app.get("/")
+@fastapi_app.get("/")
 @limiter.limit(f"{settings.RATE_LIMIT_PER_MINUTE}/minute")
 async def root(request: Request):
     """Health check endpoint."""
@@ -131,18 +230,18 @@ async def root(request: Request):
     }
 
 
-@app.get("/health")
+@fastapi_app.get("/health")
 @limiter.limit(f"{settings.RATE_LIMIT_PER_MINUTE}/minute")
 async def health(request: Request):
     """Liveness probe."""
     return {
         "status": "healthy",
         "timestamp": structlog.processors.TimeStamper(fmt="iso")(None, None, {})["timestamp"],
-        "version": app.version,
+        "version": fastapi_app.version,
     }
 
 
-@app.get("/ready")
+@fastapi_app.get("/ready")
 @limiter.limit(f"{settings.RATE_LIMIT_PER_MINUTE}/minute")
 async def ready(request: Request):
     """Readiness probe."""
@@ -176,25 +275,25 @@ async def ready(request: Request):
 # Import and include routers
 from src.platform.routers import providers, requests, offers, bookings, reviews, mcp, chat, media, consumers, services, enrollment
 
-app.include_router(providers.router)
-app.include_router(requests.router)
-app.include_router(offers.router)
-app.include_router(bookings.router)
-app.include_router(reviews.router)
-app.include_router(mcp.router)
-app.include_router(chat.router)
-app.include_router(media.router)
-app.include_router(consumers.router)
-app.include_router(services.router)
-app.include_router(enrollment.router)
+fastapi_app.include_router(providers.router)
+fastapi_app.include_router(requests.router)
+fastapi_app.include_router(offers.router)
+fastapi_app.include_router(bookings.router)
+fastapi_app.include_router(reviews.router)
+fastapi_app.include_router(mcp.router)
+fastapi_app.include_router(chat.router)
+fastapi_app.include_router(media.router)
+fastapi_app.include_router(consumers.router)
+fastapi_app.include_router(services.router)
+fastapi_app.include_router(enrollment.router)
 
 # Import Socket.io
 from src.platform.socket_io import create_socket_app
 
 # Wrap app with Socket.io at the very end
 # This handles /ws/socket.io at the root level before hitting FastAPI
-# IMPORTANT: No more FastAPI-specific calls (like include_router) can be made on 'app' after this
-app = create_socket_app(app)
+# IMPORTANT: No more FastAPI-specific calls (like include_router) can be made on 'fastapi_app' after this
+app = create_socket_app(fastapi_app)
 
 
 if __name__ == "__main__":

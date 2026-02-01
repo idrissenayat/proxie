@@ -10,7 +10,7 @@ from src.platform.schemas.request import ServiceRequestCreate, ServiceRequestRes
 from src.platform.services.matching import MatchingService
 from src.platform.models.offer import Offer
 from src.platform.schemas.offer import OfferResponse
-from src.platform.auth import get_current_user
+from src.platform.auth import get_current_user, require_role, require_ownership
 from typing import Dict, Any
 
 router = APIRouter(
@@ -24,12 +24,51 @@ router = APIRouter(
     response_model=ServiceRequestResponse, 
     status_code=status.HTTP_201_CREATED,
     summary="Create Service Request",
-    description="Creates a new service request and immediately triggers the provider matching engine. The request will be visible to matched providers."
+    description="""
+    Create a new service request and immediately trigger the provider matching engine.
+    
+    **Process:**
+    1. Request is created with status "matching"
+    2. Matching engine finds suitable providers based on:
+       - Service category and type
+       - Location (city/neighborhood)
+       - Specializations and requirements
+       - Semantic similarity (using embeddings)
+    3. Matched providers are notified and can view the request
+    4. Request status updates to "offers_received" when providers submit offers
+    
+    **Authentication:** Requires `consumer` role.
+    
+    **Rate Limit:** 60 requests per minute per user.
+    """,
+    responses={
+        201: {
+            "description": "Request created successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "id": "550e8400-e29b-41d4-a716-446655440001",
+                        "consumer_id": "550e8400-e29b-41d4-a716-446655440000",
+                        "raw_input": "I need a haircut for curly hair in Brooklyn",
+                        "service_category": "hairstylist",
+                        "service_type": "haircut",
+                        "status": "matching",
+                        "matched_providers": ["550e8400-e29b-41d4-a716-446655440002"],
+                        "created_at": "2026-01-28T10:00:00Z"
+                    }
+                }
+            }
+        },
+        400: {"description": "Invalid input data"},
+        401: {"description": "Authentication required"},
+        403: {"description": "Requires consumer role"},
+        429: {"description": "Rate limit exceeded"}
+    }
 )
 async def create_request(
     request: ServiceRequestCreate, 
     db: Session = Depends(get_db),
-    user: Dict[str, Any] = Depends(get_current_user)
+    user: Dict[str, Any] = Depends(require_role("consumer"))
 ):
     """
     Create a new service request and trigger matching.
@@ -41,7 +80,7 @@ async def create_request(
     # 1. Create Request Record
     request_data = request.model_dump()
     # Convert Pydantic models to dicts for JSON fields
-    from datetime import datetime
+    from datetime import datetime, timezone
     db_request = ServiceRequest(
         consumer_id=request.consumer_id,
         raw_input=request.raw_input,
@@ -54,7 +93,7 @@ async def create_request(
         status="matching",
         status_history=[{
             "status": "matching",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "note": "Request created"
         }]
     )
@@ -88,7 +127,8 @@ def list_requests(
     matching_provider_id: UUID = None,
     skip: int = 0, 
     limit: int = 100, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
     List service requests, optionally filtered by status or matched provider.
@@ -108,12 +148,11 @@ def list_requests(
     
     if matching_provider_id:
         from src.platform.models.provider import ProviderLeadView
-        # Fetch viewed IDs for this provider
-        viewed_ids = {
-            v.request_id for v in db.query(ProviderLeadView).filter(
-                ProviderLeadView.provider_id == matching_provider_id
-            ).all()
-        }
+        from src.platform.database.query_utils import batch_load_viewed_status
+        
+        # Batch load viewed status (fixes N+1 query)
+        request_ids = [r.id for r in requests]
+        viewed_ids = batch_load_viewed_status(db, request_ids, matching_provider_id)
         
         # We need to add viewed field to response. 
         # Since response_model is ServiceRequestResponse, we might need a wrapper or dynamic field.
@@ -123,7 +162,27 @@ def list_requests(
             
     return requests
 
-@router.get("/{request_id}", response_model=ServiceRequestResponse)
+@router.get(
+    "/{request_id}",
+    response_model=ServiceRequestResponse,
+    summary="Get Request Details",
+    description="""
+    Retrieve detailed information about a specific service request.
+    
+    **Public Endpoint:** Can be accessed without authentication for viewing request details.
+    However, certain fields may be restricted based on authentication status.
+    
+    **Returns:**
+    - Request details (service type, location, budget, timing)
+    - Current status and status history
+    - Matched providers (if any)
+    - Associated offers (if any)
+    """,
+    responses={
+        200: {"description": "Request found"},
+        404: {"description": "Request not found"}
+    }
+)
 def get_request(request_id: UUID, db: Session = Depends(get_db)):
     """
     Get request details.
@@ -208,8 +267,7 @@ def update_request(
         raise HTTPException(status_code=404, detail="Request not found")
     
     # Security: Ensure user owns this request
-    if str(req.consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Not authorized to edit this request")
+    require_ownership("request", request_id, user, db)
     
     # Check if editing is allowed
     offer_count = db.query(Offer).filter(Offer.request_id == request_id).count()
@@ -228,9 +286,11 @@ def update_request(
     # Add to status history
     if not req.status_history:
         req.status_history = []
+    
+    from datetime import datetime, timezone
     req.status_history.append({
         "status": req.status,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "note": "Request updated"
     })
     flag_modified(req, "status_history")
@@ -248,7 +308,7 @@ def cancel_request(
     """
     Cancel a service request. Only allowed for requests in 'matching' or 'pending' status.
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
     from sqlalchemy.orm.attributes import flag_modified
     
     req = db.query(ServiceRequest).filter(ServiceRequest.id == request_id).first()
@@ -256,8 +316,7 @@ def cancel_request(
         raise HTTPException(status_code=404, detail="Request not found")
     
     # Security: Ensure user owns this request
-    if str(req.consumer_id) != user.get("sub") and user.get("public_metadata", {}).get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Not authorized to cancel this request")
+    require_ownership("request", request_id, user, db)
     
     # Check if cancellation is allowed
     if req.status not in ["matching", "pending"]:
@@ -275,7 +334,7 @@ def cancel_request(
         req.status_history = []
     req.status_history.append({
         "status": "cancelled",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "note": f"Request cancelled (was {old_status})"
     })
     flag_modified(req, "status_history")

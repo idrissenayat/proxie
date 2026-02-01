@@ -9,7 +9,8 @@ def test_provider_model():
     
     provider = Provider(
         name="Test Provider",
-        email="test@example.com"
+        email="test@example.com",
+        status="active"  # Explicitly set for in-memory test
     )
     
     assert provider.name == "Test Provider"
@@ -23,7 +24,8 @@ def test_service_request_model():
     
     request = ServiceRequest(
         raw_input="I need a haircut",
-        service_category="hairstylist"
+        service_category="hairstylist",
+        status="pending"  # Explicitly set for in-memory test
     )
     
     assert request.service_category == "hairstylist"

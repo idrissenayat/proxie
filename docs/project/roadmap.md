@@ -10,16 +10,16 @@
 - [x] Document booking schema
 
 ### Week 2: Design the Agents
-- [ ] Consumer agent specification
-- [ ] Provider agent specification
-- [ ] Conversation flows
-- [ ] Edge cases identified
+- [x] Consumer agent specification
+- [x] Provider agent specification
+- [x] Conversation flows
+- [x] Edge cases identified
 
 ### Week 3: Design the Platform
 - [x] Complete data model
 - [x] MCP interface specification
 - [x] Matching algorithm design
-- [ ] Trust framework v1
+- [x] Trust framework v1
 
 ### Week 4: Validate
 - [ ] Interview 10+ potential providers
@@ -33,13 +33,13 @@
 - [x] Set up PostgreSQL database
 - [x] Implement database models
 - [x] Provider registration flow
-- [ ] Portfolio storage (S3)
+- [x] Portfolio storage (S3)
 
 ### Weeks 7-8: Agent Runtime
-- [ ] Consumer agent implementation
-- [ ] Provider agent implementation
-- [ ] Agent-to-platform communication
-- [ ] Provider rules engine
+- [x] Consumer agent implementation
+- [x] Provider agent implementation
+- [x] Agent-to-platform communication
+- [x] Provider rules engine
 
 ### Week 9: Service Request Hub
 - [x] Request ingestion

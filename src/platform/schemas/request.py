@@ -1,7 +1,7 @@
 from datetime import date, datetime, time
 from typing import List, Optional, Literal
 from uuid import UUID
-from pydantic import BaseModel, Field, condecimal
+from pydantic import BaseModel, Field, condecimal, ConfigDict
 from src.platform.schemas.media import StoredMedia
 
 # --- Location ---
@@ -44,8 +44,8 @@ class ServiceRequestCreate(BaseModel):
     budget: RequestBudget
     media: List[StoredMedia] = []
 
-    model_config = {
-        "json_schema_extra": {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "consumer_id": "550e8400-e29b-41d4-a716-446655440000",
                 "raw_input": "I need a professional haircut and beard trim in Brooklyn.",
@@ -73,7 +73,7 @@ class ServiceRequestCreate(BaseModel):
                 }
             }
         }
-    }
+    )
 
 class ServiceRequestResponse(ServiceRequestCreate):
     id: UUID
@@ -84,6 +84,7 @@ class ServiceRequestResponse(ServiceRequestCreate):
     matched_providers: List[UUID] = []
     viewed_by_current_provider: Optional[bool] = None
     
-    class Config:
-        from_attributes = True
-        populate_by_name = True
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True
+    )

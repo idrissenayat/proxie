@@ -8,6 +8,8 @@ from src.platform.models.service import Service
 from src.platform.schemas.request import ServiceRequestCreate
 from src.platform.services.embeddings import embedding_service
 
+from src.platform.config import settings
+
 logger = structlog.get_logger(__name__)
 
 class MatchingService:
@@ -26,12 +28,12 @@ class MatchingService:
         # 1. Base Query with Hard Filters
         query = self.db.query(Provider).filter(Provider.status == "active")
         
-        from src.platform.config import settings
+
         if settings.ENVIRONMENT not in ["production", "staging"]:
             # In dev/test, be lenient. Return all active providers regardless of match.
-            # This is critical for E2E tests where we might not have perfect seed data.
+            # Order by created_at DESC so that newly created providers (like in tests) are seen first.
             logger.info("matching_filters_bypassed_for_dev")
-            providers = query.limit(20).all()
+            providers = query.order_by(Provider.created_at.desc()).limit(20).all()
             return [p.id for p in providers]
 
         # Filter by City (Hard)

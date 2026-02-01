@@ -8,9 +8,17 @@ from typing import Optional, Dict, Any
 from fastapi import Request, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from clerk_backend_api import Clerk
-from clerk_backend_api.security import verify_token
+from clerk_backend_api.security import verify_token as clerk_verify_token, VerifyTokenOptions
+from sqlalchemy.orm import Session
 
 from src.platform.config import settings
+from src.platform.database import get_db
+from src.platform.models.provider import Provider
+from src.platform.models.consumer import Consumer
+from src.platform.models.request import ServiceRequest
+from src.platform.models.offer import Offer
+from src.platform.models.booking import Booking
+from uuid import UUID
 
 logger = structlog.get_logger(__name__)
 
@@ -19,6 +27,15 @@ clerk_client = Clerk(bearer_auth=settings.CLERK_SECRET_KEY)
 
 # Security scheme for bearer tokens
 security = HTTPBearer(auto_error=False)
+
+def verify_token(token: str) -> Dict[str, Any]:
+    """Wrapper for clerk_verify_token with default options."""
+    return clerk_verify_token(
+        token,
+        VerifyTokenOptions(
+            secret_key=settings.CLERK_SECRET_KEY,
+        )
+    )
 
 async def get_current_user(
     request: Request,
@@ -87,22 +104,188 @@ async def get_optional_user(
             return None
         raise e
 
+def get_user_role_from_db(clerk_id: str, db: Session) -> Optional[str]:
+    """
+    Determine user role by checking database records.
+    Returns 'provider' if Provider record exists, 'consumer' if Consumer record exists, None otherwise.
+    """
+    # Check if user is a provider
+    provider = db.query(Provider).filter(Provider.clerk_id == clerk_id).first()
+    if provider:
+        return "provider"
+    
+    # Check if user is a consumer
+    consumer = db.query(Consumer).filter(Consumer.clerk_id == clerk_id).first()
+    if consumer:
+        return "consumer"
+    
+    return None
+
+
 def require_role(role: str):
     """
-    Dependency factory to enforce role-based access.
-    Note: Requires Clerk public metadata or roles to be synchronized.
+    Dependency factory to enforce role-based access control.
+    
+    Checks role in this order:
+    1. Clerk public_metadata.role (if set)
+    2. Database records (Provider/Consumer tables)
+    
+    Args:
+        role: Required role ('provider', 'consumer', or 'admin')
+    
+    Returns:
+        Dependency function that validates user has the required role
     """
-    async def role_checker(user: Dict[str, Any] = Depends(get_current_user)):
-        # Clerk stores metadata in 'public_metadata' or 'private_metadata'
-        # For the pilot, we might use a sync script or manual metadata
+    async def role_checker(
+        user: Dict[str, Any] = Depends(get_current_user),
+        db: Session = Depends(get_db)
+    ):
+        clerk_id = user.get("sub")
+        if not clerk_id:
+            logger.error("no_clerk_id_in_token")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token: missing user ID"
+            )
+        
+        # 1. Check Clerk metadata first (highest priority)
         user_role = user.get("public_metadata", {}).get("role")
         
+        # 2. Fallback: Check database records
+        if not user_role:
+            user_role = get_user_role_from_db(clerk_id, db)
+            logger.debug("role_from_db", clerk_id=clerk_id, role=user_role)
+        
+        # 3. Admin role can access anything
+        if user_role == "admin":
+            return user
+        
+        # 4. Validate role matches requirement
         if not user_role or user_role != role:
-            logger.warning("role_mismatch", required=role, actual=user_role)
+            logger.warning(
+                "role_mismatch",
+                required=role,
+                actual=user_role,
+                clerk_id=clerk_id
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Resource requires '{role}' role",
+                detail=f"Resource requires '{role}' role. Your role: '{user_role or 'none'}'",
             )
+        
         return user
     
     return role_checker
+
+
+def check_resource_ownership(
+    resource_type: str,
+    resource_id: UUID,
+    clerk_id: str,
+    db: Session,
+    user: Optional[Dict[str, Any]] = None
+) -> bool:
+    """
+    Check if a user owns a resource.
+    
+    Args:
+        resource_type: Type of resource ('provider', 'consumer', 'request', 'offer', 'booking')
+        resource_id: ID of the resource
+        clerk_id: Clerk ID of the user
+        db: Database session
+        user: Optional user dict (for admin check)
+    
+    Returns:
+        True if user owns the resource, False otherwise
+    """
+    # Admin can access any resource
+    if user and user.get("public_metadata", {}).get("role") == "admin":
+        return True
+    
+    if resource_type == "provider":
+        provider = db.query(Provider).filter(
+            Provider.id == resource_id,
+            Provider.clerk_id == clerk_id
+        ).first()
+        return provider is not None
+        
+    elif resource_type == "consumer":
+        consumer = db.query(Consumer).filter(
+            Consumer.id == resource_id,
+            Consumer.clerk_id == clerk_id
+        ).first()
+        return consumer is not None
+        
+    elif resource_type == "request":
+        request = db.query(ServiceRequest).filter(
+            ServiceRequest.id == resource_id,
+            ServiceRequest.consumer_id == clerk_id
+        ).first()
+        return request is not None
+        
+    elif resource_type == "offer":
+        # Offers are owned by providers
+        offer = db.query(Offer).filter(Offer.id == resource_id).first()
+        if not offer:
+            return False
+        provider = db.query(Provider).filter(
+            Provider.id == offer.provider_id,
+            Provider.clerk_id == clerk_id
+        ).first()
+        return provider is not None
+        
+    elif resource_type == "booking":
+        # Bookings can be owned by either consumer or provider
+        booking = db.query(Booking).filter(Booking.id == resource_id).first()
+        if not booking:
+            return False
+        
+        # Check if user is the consumer
+        if str(booking.consumer_id) == clerk_id:
+            return True
+        
+        # Check if user is the provider
+        provider = db.query(Provider).filter(
+            Provider.id == booking.provider_id,
+            Provider.clerk_id == clerk_id
+        ).first()
+        return provider is not None
+        
+    else:
+        logger.error("unknown_resource_type", resource_type=resource_type)
+        return False
+
+
+def require_ownership(resource_type: str, resource_id: UUID, user: Dict[str, Any], db: Session):
+    """
+    Validate resource ownership and raise HTTPException if user doesn't own the resource.
+    
+    This is a helper function to be called within endpoint handlers.
+    
+    Args:
+        resource_type: Type of resource ('provider', 'consumer', 'request', 'offer', 'booking')
+        resource_id: ID of the resource
+        user: Authenticated user dict
+        db: Database session
+    
+    Raises:
+        HTTPException: 403 if user doesn't own the resource
+    """
+    clerk_id = user.get("sub")
+    if not clerk_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token: missing user ID"
+        )
+    
+    if not check_resource_ownership(resource_type, resource_id, clerk_id, db, user):
+        logger.warning(
+            "ownership_check_failed",
+            resource_type=resource_type,
+            resource_id=str(resource_id),
+            clerk_id=clerk_id
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You don't have permission to access this {resource_type}"
+        )

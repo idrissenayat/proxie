@@ -1,7 +1,7 @@
 # Proxie Platform: Technical Architecture Specification
 
 **Document Version:** 2.0  
-**Date:** January 27, 2026  
+**Date:** January 28, 2026  
 **Status:** Ready for Implementation Planning  
 **Prepared For:** AntiGravity Engineering Team  
 **Classification:** Internal / Confidential
@@ -24,7 +24,7 @@ Proxie is an **agent-native marketplace** that connects skilled service provider
 | Metric | Status |
 |--------|--------|
 | Backend API | ✅ Functional (FastAPI + PostgreSQL) |
-| AI Chat Interface | ✅ Live (Gemini 2.0 Flash) |
+| AI Chat Interface | ✅ Live (Gemini 2.5 Flash) |
 | Consumer Dashboard | ✅ Complete (Request lifecycle) |
 | Provider Dashboard | ✅ Complete (Leads + Offers) |
 | Provider Enrollment | ✅ Complete (Conversational onboarding) |

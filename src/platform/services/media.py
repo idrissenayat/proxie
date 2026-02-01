@@ -10,7 +10,7 @@ import uuid
 import logging
 import mimetypes
 from typing import Optional, Tuple, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from src.platform.schemas.media import MediaAttachment, StoredMedia
@@ -111,7 +111,7 @@ class MediaService:
             mime_type=attachment.mime_type,
             filename=attachment.filename,
             size_bytes=len(data),
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             session_id=session_id
         )
         
@@ -153,7 +153,7 @@ class MediaService:
         Delete media files older than the specified hours.
         Returns the number of files deleted.
         """
-        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
         deleted = 0
         
         for filepath in UPLOAD_DIR.iterdir():

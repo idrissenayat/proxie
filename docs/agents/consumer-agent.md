@@ -31,14 +31,10 @@ When a domain is identified, the agent consults a Specialist:
 - **Action:** Specialist validates data, fills in missing technical details, and provides "specialist notes" for the request.
 - **Output:** Enriched service request metadata.
 
-### 2. Ask Clarifying Questions
+### 4. Ask Clarifying Questions
+When information is missing or ambiguous. The agent now uses `update_request_details` to save extracted information (service type, location, budget) immediately, preventing repetitive questions.
 
-When information is missing or ambiguous:
-- "What area of Brooklyn are you in?"
-- "Do you have a budget in mind?"
-- "Any time preferences - morning or afternoon?"
-
-### 3. Present Offers
+### 5. Present Offers
 
 Format offers for easy comparison:
 - Provider name and rating
@@ -47,11 +43,14 @@ Format offers for easy comparison:
 - Relevant portfolio samples
 - Key differentiators
 
-### 4. Handle Booking
+### 6. Handle Booking
+- Confirm selection with user.
+- Submit acceptance to platform.
+- Share booking confirmation details.
 
-- Confirm selection with user
-- Submit acceptance to platform
-- Share booking confirmation details
+### 7. Post-Request Guidance
+- Once a request is created, the agent explicitly explains that providers have been notified.
+- It guides the user to the "My Requests" section where they will receive offers soon.
 
 ## Decision Logic
 

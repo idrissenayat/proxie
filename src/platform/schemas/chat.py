@@ -43,3 +43,13 @@ class ChatResponse(BaseModel):
     data: Optional[Dict[str, Any]] = Field(None, description="Structured data (offers, bookings, etc.)")
     draft: Optional[DraftRequest] = Field(None, description="Draft request awaiting approval")
     awaiting_approval: bool = Field(False, description="Whether agent is waiting for user to approve/edit/cancel")
+    task_id: Optional[str] = Field(None, description="Task ID for async processing (if async mode enabled)")
+
+
+class ChatTaskStatusResponse(BaseModel):
+    """Response for chat task status check."""
+    task_id: str = Field(..., description="Task ID")
+    status: str = Field(..., description="Task status: PENDING, STARTED, SUCCESS, FAILURE")
+    result: Optional[Dict[str, Any]] = Field(None, description="Task result when completed")
+    error: Optional[str] = Field(None, description="Error message if task failed")
+    progress: Optional[float] = Field(None, description="Progress percentage (0-100)")

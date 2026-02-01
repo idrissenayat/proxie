@@ -8,8 +8,8 @@ import {
   User, Briefcase, Sparkles, Camera, Image, Video, X,
   MessageSquare, Calendar, CheckCircle2
 } from "lucide-react";
-import { getProviders, getRequests, getConsumerRequests, getEnrollment } from "@/lib/api";
-import { useUser, SignedIn, SignedOut } from "@clerk/nextjs";
+import { getProviders, getRequests, getConsumerRequests, getMyRequests, getEnrollment } from "@/lib/api";
+import { useUser, useAuth, SignedIn, SignedOut } from "@clerk/nextjs";
 import CameraCapture from "@/components/CameraCapture";
 import RequestSection from "@/components/dashboard/RequestSection";
 import HeaderComponent from "@/components/Header";
@@ -27,6 +27,7 @@ const getOrCreateConsumerId = () => {
 
 export default function DashboardPage() {
   const { isLoaded, isSignedIn, user } = useUser();
+  const { getToken } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("demand");
   const [input, setInput] = useState("");
@@ -46,6 +47,7 @@ export default function DashboardPage() {
   const recognitionRef = useRef(null);
 
   useEffect(() => {
+    if (!isLoaded) return;
     const consumerId = getOrCreateConsumerId();
 
     // Load data
@@ -73,10 +75,19 @@ export default function DashboardPage() {
           }
         }
 
-        const [provRes, reqRes, conRes] = await Promise.all([
+        let conRes;
+        if (isSignedIn) {
+          const token = await getToken();
+          conRes = await getMyRequests({
+            headers: { Authorization: `Bearer ${token}` }
+          });
+        } else {
+          conRes = await getConsumerRequests(consumerId);
+        }
+
+        const [provRes, reqRes] = await Promise.all([
           getProviders(),
-          getRequests({ status: "matching" }),
-          getConsumerRequests(consumerId)
+          getRequests({ status: "matching" })
         ]);
 
         setProviders(provRes.data.slice(0, 5));
@@ -107,7 +118,7 @@ export default function DashboardPage() {
       recognition.onend = () => setIsListening(false);
       recognitionRef.current = recognition;
     }
-  }, []);
+  }, [isLoaded, isSignedIn, getToken]);
 
   const handleSubmit = async (text) => {
     const query = text || input;

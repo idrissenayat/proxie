@@ -1,5 +1,6 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider, SignInButton, SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import "./globals.css";
 
 const geistSans = Geist({
@@ -22,9 +23,11 @@ export default function RootLayout({ children }) {
     <ClerkProvider>
       <html lang="en">
         <body className="bg-black antialiased text-white" suppressHydrationWarning>
-          <div className="max-w-[480px] mx-auto flex flex-col min-h-screen border-x border-zinc-900 shadow-2xl">
-            {children}
-          </div>
+          <ErrorBoundary>
+            <div className="max-w-[480px] mx-auto flex flex-col min-h-screen border-x border-zinc-900 shadow-2xl">
+              {children}
+            </div>
+          </ErrorBoundary>
         </body>
       </html>
     </ClerkProvider>
