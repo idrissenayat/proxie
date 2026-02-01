@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict, Any
 from uuid import UUID, uuid4
 from datetime import datetime, time, date
+import structlog
 
 from src.platform.database import SessionLocal
 from src.platform.models.booking import Booking
@@ -11,6 +12,8 @@ from src.platform.models.review import Review
 from src.platform.models.service import Service
 from src.platform.services.matching import MatchingService
 from src.platform.metrics import track_request_created, track_offer_submitted, track_booking_confirmed
+
+logger = structlog.get_logger(__name__)
 
 # --- Consumer Handlers ---
 
@@ -25,63 +28,87 @@ async def create_service_request(
     budget: Dict[str, Any],
     media: List[Dict[str, Any]] = []
 ) -> Dict[str, Any]:
-    with SessionLocal() as db:
-        # Create Request
-        req = ServiceRequest(
-            id=uuid4(),
-            consumer_id=consumer_id,
-            raw_input=raw_input,
-            service_category=service_category,
-            service_type=service_type,
-            requirements=requirements,
-            location=location,
-            timing=timing,
-            budget=budget,
-            media=media,
-            status="matching"
-        )
-        db.add(req)
-        db.commit()
-        db.refresh(req)
-        
-        # Trigger Matching
-        matcher = MatchingService(db)
-        
-        from src.platform.schemas.request import ServiceRequestCreate, RequestLocation, RequestRequirements, RequestTiming, RequestBudget
+    logger.info(
+        "create_service_request_called",
+        consumer_id=str(consumer_id),
+        service_category=service_category,
+        service_type=service_type,
+        location=location,
+        budget=budget
+    )
+    try:
+        with SessionLocal() as db:
+            # Create Request
+            req = ServiceRequest(
+                id=uuid4(),
+                consumer_id=consumer_id,
+                raw_input=raw_input,
+                service_category=service_category,
+                service_type=service_type,
+                requirements=requirements,
+                location=location,
+                timing=timing,
+                budget=budget,
+                media=media,
+                status="matching"
+            )
+            db.add(req)
+            db.commit()
+            db.refresh(req)
 
-        # Filter timing dict to only include valid RequestTiming fields
-        valid_timing_fields = {"urgency", "preferred_dates", "preferred_times", "flexibility"}
-        filtered_timing = {k: v for k, v in timing.items() if k in valid_timing_fields}
+            # Trigger Matching
+            matcher = MatchingService(db)
 
-        # Filter budget dict to only include valid RequestBudget fields
-        valid_budget_fields = {"min", "max", "min_price", "max_price", "currency", "flexibility"}
-        filtered_budget = {k: v for k, v in budget.items() if k in valid_budget_fields}
+            from src.platform.schemas.request import ServiceRequestCreate, RequestLocation, RequestRequirements, RequestTiming, RequestBudget
 
-        schema = ServiceRequestCreate(
-            consumer_id=consumer_id,
-            raw_input=raw_input,
-            service_category=service_category,
-            service_type=service_type,
-            requirements=RequestRequirements(**requirements),
-            location=RequestLocation(**location),
-            timing=RequestTiming(**filtered_timing),
-            budget=RequestBudget(**filtered_budget),
-            media=media
-        )
-        
-        matched_ids = await matcher.find_providers(schema)
-        req.matched_providers = [str(uid) for uid in matched_ids]
-        
-        db.commit()
-        
-        # Track metric
-        track_request_created(service_category)
-        
-        return {
-            "request_id": str(req.id),
-            "status": req.status,
-            "message": f"Successfully posted! I've automatically notified {len(matched_ids)} top-rated providers in your area. You'll start receiving offers very soon."
-        }
+            # Filter timing dict to only include valid RequestTiming fields
+            valid_timing_fields = {"urgency", "preferred_dates", "preferred_times", "flexibility"}
+            filtered_timing = {k: v for k, v in timing.items() if k in valid_timing_fields}
+
+            # Filter budget dict to only include valid RequestBudget fields
+            valid_budget_fields = {"min", "max", "min_price", "max_price", "currency", "flexibility"}
+            filtered_budget = {k: v for k, v in budget.items() if k in valid_budget_fields}
+
+            # Convert media dicts to StoredMedia objects if provided
+            from src.platform.schemas.media import StoredMedia
+            media_objects = []
+            for m in media:
+                if isinstance(m, dict) and m:  # Only process non-empty dicts
+                    try:
+                        media_objects.append(StoredMedia(**m))
+                    except Exception:
+                        pass  # Skip invalid media entries
+
+            schema = ServiceRequestCreate(
+                consumer_id=consumer_id,
+                raw_input=raw_input,
+                service_category=service_category,
+                service_type=service_type,
+                requirements=RequestRequirements(**requirements),
+                location=RequestLocation(**location),
+                timing=RequestTiming(**filtered_timing),
+                budget=RequestBudget(**filtered_budget),
+                media=media_objects
+            )
+
+            matched_ids = await matcher.find_providers(schema)
+            req.matched_providers = [str(uid) for uid in matched_ids]
+
+            db.commit()
+
+            # Track metric
+            track_request_created(service_category)
+
+            logger.info("create_service_request_success", request_id=str(req.id), matched_count=len(matched_ids))
+            return {
+                "request_id": str(req.id),
+                "status": req.status,
+                "message": f"Successfully posted! I've automatically notified {len(matched_ids)} top-rated providers in your area. You'll start receiving offers very soon."
+            }
+    except Exception as e:
+        logger.exception("create_service_request_failed", error=str(e))
+        raise
+
 
 def get_offers(request_id: UUID) -> Dict[str, Any]:
     with SessionLocal() as db:
