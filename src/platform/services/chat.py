@@ -989,7 +989,7 @@ class ChatService:
                 
                 if not internal_id:
                      # Create a default UUID if everything else fails
-                     internal_id = uuid.uuid4()
+                     internal_id = uuid4()
                 
                 # Update context so subsequent tool calls use the same internal identity
                 context["consumer_id"] = str(internal_id)
@@ -1000,6 +1000,8 @@ class ChatService:
                     description += f" Hair type: {params['hair_type']}."
                 if params.get("style_preferences"):
                     description += f" Style: {params['style_preferences']}."
+                if params.get("timing"):
+                    description += f" Timing: {params['timing']}."
                 
                 # Use consumer profile location if city is missing from tool call
                 city = params.get("city")
@@ -1013,7 +1015,7 @@ class ChatService:
                     raw_input=description,
                     requirements={},
                     location={"city": city},
-                    timing={"urgency": "flexible", "preference": params.get("timing", "")},
+                    timing={"urgency": "flexible"},
                     budget={"min": params.get("budget_min", 0), "max": params.get("budget_max", 100)},
                     media=params.get("media", [])
                 )
@@ -1071,7 +1073,7 @@ class ChatService:
                 return {
                     "leads": [
                         {
-                            "id": str(uuid.uuid4()),
+                            "id": str(uuid4()),
                             "service_type": "Haircut",
                             "description": "Fade and trim",
                             "budget": 60,
@@ -1111,7 +1113,7 @@ class ChatService:
             elif name == "draft_offer":
                 return {
                     "draft": {
-                        "id": str(uuid.uuid4()),
+                        "id": str(uuid4()),
                         "status": "draft",
                         "price": params.get("price"),
                         "message": params.get("message")
