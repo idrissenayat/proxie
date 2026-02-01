@@ -899,6 +899,13 @@ class ChatService:
 
     async def _execute_tool(self, name: str, params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a tool/function and return results."""
+        logger.info(
+            "execute_tool_called",
+            tool_name=name,
+            params=params,
+            has_consumer_id=bool(context.get("consumer_id")),
+            has_provider_id=bool(context.get("provider_id"))
+        )
         try:
             cid = context.get("consumer_id")
             consumer_uuid = UUID(cid) if cid else None

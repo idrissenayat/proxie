@@ -79,18 +79,31 @@ async def create_service_request(
                     except Exception:
                         pass  # Skip invalid media entries
 
-            schema = ServiceRequestCreate(
-                consumer_id=consumer_id,
-                raw_input=raw_input,
-                service_category=service_category,
-                service_type=service_type,
-                requirements=RequestRequirements(**requirements),
-                location=RequestLocation(**location),
-                timing=RequestTiming(**filtered_timing),
-                budget=RequestBudget(**filtered_budget),
-                media=media_objects
+            logger.info(
+                "create_service_request_building_schema",
+                filtered_timing=filtered_timing,
+                filtered_budget=filtered_budget,
+                location=location,
+                requirements=requirements
             )
 
+            try:
+                schema = ServiceRequestCreate(
+                    consumer_id=consumer_id,
+                    raw_input=raw_input,
+                    service_category=service_category,
+                    service_type=service_type,
+                    requirements=RequestRequirements(**requirements),
+                    location=RequestLocation(**location),
+                    timing=RequestTiming(**filtered_timing),
+                    budget=RequestBudget(**filtered_budget),
+                    media=media_objects
+                )
+            except Exception as schema_error:
+                logger.exception("create_service_request_schema_error", error=str(schema_error))
+                raise
+
+            logger.info("create_service_request_schema_built", schema_valid=True)
             matched_ids = await matcher.find_providers(schema)
             req.matched_providers = [str(uid) for uid in matched_ids]
 

@@ -241,12 +241,21 @@ async def tool_node(state: AgentState):
                 content=json.dumps(result, default=str)  # Ensure result is serializable
             ))
         except Exception as e:
-            # Log the error and return an error message to the LLM
-            logger.exception("tool_execution_failed", tool_name=name, error=str(e))
+            # Log the error and return a helpful message to the LLM
+            error_msg = str(e)
+            logger.exception("tool_execution_failed", tool_name=name, error=error_msg)
+
+            # Provide actionable context to the LLM so it can inform the user
+            error_response = {
+                "error": error_msg,
+                "status": "failed",
+                "user_message": f"There was a technical issue while processing your request. The system logged the error for review. Please try again.",
+                "recoverable": True
+            }
             tool_messages.append(ToolMessage(
                 tool_call_id=tc["id"],
                 name=name,
-                content=json.dumps({"error": str(e), "status": "failed"})
+                content=json.dumps(error_response)
             ))
 
     return {
