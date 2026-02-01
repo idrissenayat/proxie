@@ -7,7 +7,11 @@ const ServiceManager = ({ services = [], onAdd, onDelete, onUpdate }) => {
 
     const handleAdd = () => {
         if (!newService.name) return;
-        onAdd(newService);
+        onAdd({
+            name: newService.name,
+            price_min: parseFloat(newService.price) || 0,
+            duration_minutes: parseInt(newService.duration) || 0
+        });
         setNewService({ name: '', price: '', duration: '' });
         setIsAdding(false);
     };
@@ -82,8 +86,8 @@ const ServiceManager = ({ services = [], onAdd, onDelete, onUpdate }) => {
                             <div>
                                 <h4 className="font-bold text-white text-sm">{service.name}</h4>
                                 <div className="flex items-center gap-3 text-zinc-500 text-[10px] font-bold uppercase tracking-wider">
-                                    <span className="flex items-center gap-1"><DollarSign size={10} /> {service.price}</span>
-                                    <span className="flex items-center gap-1"><Clock size={10} /> {service.duration}min</span>
+                                    <span className="flex items-center gap-1"><DollarSign size={10} /> {service.price_min || service.price}</span>
+                                    <span className="flex items-center gap-1"><Clock size={10} /> {service.duration_minutes || service.duration}min</span>
                                 </div>
                             </div>
                         </div>

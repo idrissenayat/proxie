@@ -34,6 +34,7 @@ export const updateProviderProfile = (id, data) => api.patch(`/providers/${id}/p
 export const getProviderPortfolio = (id) => api.get(`/providers/${id}/portfolio`);
 export const addPortfolioPhoto = (providerId, data) => api.post(`/providers/${providerId}/portfolio`, data);
 export const deletePortfolioPhoto = (providerId, photoId) => api.delete(`/providers/${providerId}/portfolio/${photoId}`);
+export const addProviderService = (providerId, data) => api.post(`/providers/${providerId}/services`, data);
 export const updateProviderService = (providerId, serviceId, data) => api.patch(`/providers/${providerId}/services/${serviceId}`, data);
 export const deleteProviderService = (providerId, serviceId) => api.delete(`/providers/${providerId}/services/${serviceId}`);
 

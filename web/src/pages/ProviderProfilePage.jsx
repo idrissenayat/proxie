@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import {
     getProviderProfile, getProviderPortfolio, updateProviderProfile,
-    addPortfolioPhoto, deletePortfolioPhoto
+    addPortfolioPhoto, deletePortfolioPhoto, addProviderService, deleteProviderService
 } from '../api/client';
 import LoadingSpinner from '../components/LoadingSpinner';
 import PortfolioManager from '../components/profile/PortfolioManager';
@@ -73,6 +73,26 @@ const ProviderProfilePage = () => {
             fetchData();
         } catch (err) {
             console.error("Error deleting portfolio photo:", err);
+        }
+    };
+
+    const handleAddService = async (serviceData) => {
+        try {
+            await addProviderService(providerId, serviceData);
+            fetchData();
+        } catch (err) {
+            console.error("Error adding service:", err);
+            alert("Failed to add service.");
+        }
+    };
+
+    const handleDeleteService = async (serviceId) => {
+        try {
+            await deleteProviderService(providerId, serviceId);
+            fetchData();
+        } catch (err) {
+            console.error("Error deleting service:", err);
+            alert("Failed to delete service.");
         }
     };
 
@@ -202,8 +222,8 @@ const ProviderProfilePage = () => {
                     {activeSection === 'services' && (
                         <ServiceManager
                             services={provider.services || []}
-                            onAdd={(newS) => console.log('Add service', newS)} // Connect to API
-                            onDelete={(id) => console.log('Delete service', id)} // Connect to API
+                            onAdd={handleAddService}
+                            onDelete={handleDeleteService}
                         />
                     )}
 

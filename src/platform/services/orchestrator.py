@@ -155,9 +155,7 @@ async def concierge_node(state: AgentState):
     elif not isinstance(content, str):
         content = str(content)
 
-    # SEC-ST-HACK: Update gathered_info for tests (this matches extraction logic)
-    if "cleaning" in str(messages).lower():
-        context["gathered_info"] = {**context.get("gathered_info", {}), "service_type": "cleaning"}
+
 
     return {
         "messages": [AIMessage(content=content)],
