@@ -691,7 +691,16 @@ class ChatService:
             structured_data = None
             for m in reversed(session["messages"]):
                 if m["role"] == "tool":
-                    structured_data = self._capture_structured_data(m["name"], json.loads(m["content"]), structured_data)
+                    try:
+                        tool_result = json.loads(m["content"])
+                        structured_data = self._capture_structured_data(m["name"], tool_result, structured_data)
+
+                        # If create_service_request succeeded, override response with success message
+                        if m["name"] == "create_service_request" and "request_id" in tool_result:
+                            response_text = tool_result.get("message", f"Your request has been posted! Request ID: {tool_result['request_id']}")
+                            logger.info("service_request_created_successfully", request_id=tool_result["request_id"])
+                    except json.JSONDecodeError as je:
+                        logger.error("failed_to_parse_tool_result", tool_name=m.get("name"), error=str(je))
             
             # Consult Specialist if relevant (SpecialistAgent logic)
             await self._consult_specialist(session["context"], message, response_text, stored_media)
