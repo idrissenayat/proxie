@@ -2,6 +2,7 @@ import json
 import structlog
 from typing import Annotated, Dict, List, Optional, Sequence, TypedDict, Union, Any, Tuple
 from typing_extensions import TypedDict
+from uuid import uuid4
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph, END
@@ -138,9 +139,31 @@ async def concierge_node(state: AgentState):
     
     # Check for tool calls
     if ai_msg.tool_calls:
+        # Handle both dict and object tool_calls (depends on LiteLLM/provider)
+        tool_calls_list = []
+        for t in ai_msg.tool_calls:
+            if isinstance(t, dict):
+                tool_calls_list.append(t)
+            elif hasattr(t, 'to_dict'):
+                tool_calls_list.append(t.to_dict())
+            elif hasattr(t, 'model_dump'):
+                tool_calls_list.append(t.model_dump())
+            else:
+                # Fallback: try to convert to dict
+                tool_calls_list.append({
+                    "id": getattr(t, 'id', str(uuid4())),
+                    "type": "function",
+                    "function": {
+                        "name": getattr(t.function, 'name', '') if hasattr(t, 'function') else '',
+                        "arguments": getattr(t.function, 'arguments', '{}') if hasattr(t, 'function') else '{}'
+                    }
+                })
+
+        logger.info("tool_calls_detected", count=len(tool_calls_list), tools=[tc.get('function', {}).get('name', 'unknown') for tc in tool_calls_list])
+
         lc_ai_msg = AIMessage(
             content=ai_msg.content or "",
-            additional_kwargs={"tool_calls": [t.to_dict() for t in ai_msg.tool_calls]}
+            additional_kwargs={"tool_calls": tool_calls_list}
         )
         return {
             "messages": [lc_ai_msg],
