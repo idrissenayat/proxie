@@ -1032,6 +1032,15 @@ class ChatService:
                 if budget_max is None:
                     budget_max = budget_min + 50 if budget_min else 100
 
+                logger.info(
+                    "create_service_request_calling_handler",
+                    consumer_id=str(internal_id),
+                    city=city,
+                    budget_min=budget_min,
+                    budget_max=budget_max,
+                    service_type=params.get("service_type")
+                )
+
                 result = await handlers.create_service_request(
                     consumer_id=internal_id,
                     service_category=params.get("service_type", "general") or "general",
