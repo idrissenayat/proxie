@@ -1,7 +1,11 @@
 from mcp.server import Server
 from mcp.types import Tool, TextContent, EmbeddedResource
-from mcp.shared.exceptions import McpError
 from typing import Any, Sequence
+
+try:
+    from mcp.shared.exceptions import McpError
+except ImportError:  # mcp 2.x renamed McpError -> MCPError
+    from mcp.shared.exceptions import MCPError as McpError
 
 from src.mcp import handlers
 
