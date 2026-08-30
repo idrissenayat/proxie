@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
     ChevronLeft, Star, MapPin, Clock, DollarSign,
-    CheckCircle2, ArrowRight, Info, Filter, MessageSquare
+    CheckCircle2, ArrowRight, Info, Filter, MessageSquare, User
 } from 'lucide-react';
 import { getRequest, getOffersForRequest, acceptOffer } from '@/lib/api';
 import LoadingSpinner from '@/components/LoadingSpinner';
