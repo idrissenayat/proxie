@@ -53,7 +53,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install ruff black mypy isort pytest pytest-asyncio pytest-cov bandit pip-audit clerk-backend-api sse-starlette
+          pip install ruff black mypy isort pytest pytest-asyncio pytest-cov bandit pip-audit clerk-backend-api sse-starlette 'mcp>=1.0.0,<2'
 
       - name: Lint with Ruff
         run: ruff check src/ tests/

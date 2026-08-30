@@ -27,7 +27,8 @@ langchain-openai>=0.0.2
 langchain-community>=0.0.10
 
 # MCP
-mcp>=0.1.0
+# 2.x renamed McpError and removed Server.list_tools; this codebase uses the 1.x API.
+mcp>=1.0.0,<2
 sse-starlette>=1.6.0
 
 # Async
