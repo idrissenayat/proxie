@@ -4,6 +4,8 @@ Rate limiting middleware for FastAPI.
 Adds rate limit headers and enforces per-user rate limits.
 """
 
+import time
+
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse

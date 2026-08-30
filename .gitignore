@@ -19,8 +19,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
 parts/
 sdist/
 var/
@@ -33,6 +31,10 @@ wheels/
 .venv/
 venv/
 ENV/
+
+# Python packaging output dirs (root-only so web-next/src/lib is tracked)
+/lib/
+/lib64/
 
 # PyInstaller
 *.manifest

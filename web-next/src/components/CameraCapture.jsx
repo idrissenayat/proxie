@@ -28,6 +28,8 @@ const CameraCapture = ({ onCapture, onClose }) => {
     }, []);
 
     useEffect(() => {
+        // Camera preview must be opened when the overlay mounts.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         startCamera();
         return () => {
             if (stream) {

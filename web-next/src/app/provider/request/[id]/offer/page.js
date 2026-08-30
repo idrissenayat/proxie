@@ -89,7 +89,7 @@ export default function SubmitOfferPage() {
     if (initialLoading) return <div className="min-h-screen bg-black flex items-center justify-center"><LoadingSpinner /></div>;
     if (!requestId) return <div className="min-h-screen bg-black p-8 text-center text-red-500 font-bold">Missing request data</div>;
 
-    const useSlot = (slot) => {
+    const applySuggestedSlot = (slot) => {
         setForm({ ...form, date: slot.date, startTime: slot.time });
     };
 
@@ -158,7 +158,7 @@ export default function SubmitOfferPage() {
                                 <button
                                     key={i}
                                     type="button"
-                                    onClick={() => useSlot(slot)}
+                                    onClick={() => applySuggestedSlot(slot)}
                                     className={`flex flex-col items-center gap-1 px-4 py-3 rounded-2xl border transition-all whitespace-nowrap min-w-[100px] cursor-pointer ${form.date === slot.date && form.startTime === slot.time
                                         ? 'bg-white border-white text-black'
                                         : 'bg-zinc-900 border-zinc-800 text-zinc-400'

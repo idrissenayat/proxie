@@ -27,7 +27,9 @@ langchain-openai>=0.0.2
 langchain-community>=0.0.10
 
 # MCP
-mcp>=0.1.0
+# 2.x renamed McpError and removed Server.list_tools; this codebase uses the 1.x API.
+mcp>=1.0.0,<2
+sse-starlette>=1.6.0
 
 # Async
 httpx>=0.26.0
@@ -43,6 +45,7 @@ uvicorn[standard]>=0.27.0
 slowapi>=0.1.9
 python-jose[cryptography]>=3.3.0
 google-cloud-secret-manager>=2.20.0
+clerk-backend-api>=1.0.0
 
 # Monitoring & Observability
 sentry-sdk[fastapi]>=1.40.0

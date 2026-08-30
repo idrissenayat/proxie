@@ -989,7 +989,7 @@ class ChatService:
                 
                 if not internal_id:
                      # Create a default UUID if everything else fails
-                     internal_id = uuid.uuid4()
+                     internal_id = uuid4()
                 
                 # Update context so subsequent tool calls use the same internal identity
                 context["consumer_id"] = str(internal_id)
@@ -1071,7 +1071,7 @@ class ChatService:
                 return {
                     "leads": [
                         {
-                            "id": str(uuid.uuid4()),
+                            "id": str(uuid4()),
                             "service_type": "Haircut",
                             "description": "Fade and trim",
                             "budget": 60,
@@ -1111,7 +1111,7 @@ class ChatService:
             elif name == "draft_offer":
                 return {
                     "draft": {
-                        "id": str(uuid.uuid4()),
+                        "id": str(uuid4()),
                         "status": "draft",
                         "price": params.get("price"),
                         "message": params.get("message")

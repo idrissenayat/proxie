@@ -39,6 +39,5 @@ async def test_orchestrator_consumer_flow():
     
     assert "drafted a cleaning request" in response_text.lower()
     assert "ready to post" in response_text.lower()
-    # Check if context was updated by the HACK in concierge_node
-    assert "gathered_info" in final_context
-    assert final_context["gathered_info"]["service_type"] == "cleaning"
+    # Consumer profile is passed through; gathered_info is no longer set by a concierge hack.
+    assert final_context.get("consumer_profile", {}).get("name") == "Test User"

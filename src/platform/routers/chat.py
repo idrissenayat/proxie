@@ -71,7 +71,7 @@ async def verify_chat_api_key(x_api_key: Optional[str] = Header(None)):
     """,
     responses={
         200: {
-            "description": "Chat response received",
+            "description": "Chat response received, or task created in async mode",
             "content": {
                 "application/json": {
                     "example": {
@@ -81,19 +81,6 @@ async def verify_chat_api_key(x_api_key: Optional[str] = Header(None)):
                         "draft": None,
                         "awaiting_approval": False,
                         "task_id": None
-                    }
-                }
-            }
-        },
-        200: {
-            "description": "Task created (async mode)",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "session_id": "session_123",
-                        "message": "Processing your message...",
-                        "data": {"task_id": "task_456", "status": "processing"},
-                        "task_id": "task_456"
                     }
                 }
             }
